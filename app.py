@@ -6,6 +6,7 @@ from student_support_agent import answer_question
 from assessment_agent import generate_mcqs, print_quiz
 from document_agent import generate_document
 from analytics_agent import analyze_performance
+from coordinator import classify_intent
 
 
 # Page setup
@@ -17,11 +18,54 @@ st.title("🎓 EduAgent — AI Assistant for Course Material")
 # "agent" gets control based on what the user wants to do.
 page = st.sidebar.radio(
     "Choose an action:",
-    ["Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics"]
+    ["Smart Assistant","Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics"]
 )
 
 # Make sure a folder exists to temporarily store uploaded files
 os.makedirs("uploads", exist_ok=True)
+
+# --- COORDINATOR AGENT (smart routing) ---
+if page == "Smart Assistant":
+    st.header("🧭 Coordinator Agent")
+    st.write("Type what you want in plain English. The coordinator will decide which agent should handle it.")
+
+    user_input = st.text_area(
+        "What do you need?",
+        placeholder="e.g. 'What is PCA?' or 'Give me 5 quiz questions' or 'Draft a notice about exam postponement'"
+    )
+
+    if st.button("Submit"):
+        if user_input.strip() == "":
+            st.warning("Please type a request.")
+        else:
+            with st.spinner("Deciding which agent should handle this..."):
+                intent = classify_intent(user_input)
+
+            st.caption(f"🔀 Routed to: **{intent}** agent")
+
+            if intent == "question":
+                with st.spinner("Thinking..."):
+                    result = answer_question(user_input)
+                st.write(result)
+
+            elif intent == "quiz":
+                with st.spinner("Generating quiz..."):
+                    quiz = generate_mcqs(source_name="sample_lecture", num_questions=5)
+                if quiz:
+                    for i, q in enumerate(quiz, start=1):
+                        st.markdown(f"**Q{i}. {q['question']}**")
+                        for letter, opt in q["options"].items():
+                            st.write(f"{letter}) {opt}")
+                else:
+                    st.error("Could not generate a valid quiz. Try again.")
+
+            elif intent == "document":
+                with st.spinner("Drafting document..."):
+                    doc = generate_document(user_input, doc_type="Notice")
+                st.text_area("Result:", value=doc, height=300)
+
+            else:
+                st.info("I couldn't confidently classify this request. Try rephrasing, or use the sidebar tabs directly.")
 
 
 # --- PAGE 1: CONTENT AGENT ---
