@@ -7,6 +7,7 @@ from assessment_agent import generate_questions
 from document_agent import generate_document
 from analytics_agent import analyze_performance
 from coordinator import classify_intent
+from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes
 
 
 # Page setup
@@ -179,6 +180,13 @@ elif page == "Generate Quiz":
         questions = st.session_state["questions"]
 
         st.subheader("Generated Questions (review before use)")
+        pdf_buffer = generate_quiz_pdf_bytes(questions, title=f"{source_name} — Quiz")
+        st.download_button(
+        label="📥 Download Quiz + Answer Key (PDF)",
+        data=pdf_buffer,
+        file_name=f"{source_name.replace(' ', '_')}_quiz.pdf",
+        mime="application/pdf"
+    )
         for i, q in enumerate(questions, start=1):
             st.markdown(f"**Q{i}. {q['question']}**")
 
@@ -220,9 +228,17 @@ elif page == "Draft Document":
                 document = generate_document(template_name, field_values)
             st.session_state["document"] = document
 
-    if "document" in st.session_state:
-        st.subheader("Generated Document (review before sending)")
-        st.text_area("Result:", value=st.session_state["document"], height=300)
+if "document" in st.session_state:
+    st.subheader("Generated Document (review before sending)")
+    st.text_area("Result:", value=st.session_state["document"], height=300)
+
+    docx_buffer = generate_docx_bytes(st.session_state["document"])
+    st.download_button(
+        label="📥 Download as Word Document (.docx)",
+        data=docx_buffer,
+        file_name=f"{template_name.replace(' ', '_')}.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 # --- PAGE 5: ANALYTICS AGENT ---
 elif page == "Analytics":
