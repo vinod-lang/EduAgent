@@ -2,38 +2,65 @@ import ollama
 import json
 from vector_store import get_all_chunks
 
-MODEL_NAME = "llama3.2:3b"   # match whatever model you're using
+MODEL_NAME = "llama3.2:3b"
 
 
-def generate_mcqs(source_name=None, num_questions=5):
+def generate_questions(
+    source_name=None,
+    course=None,
+    num_questions=5,
+    question_type="MCQ",
+    difficulty="Medium"
+):
     """
-    Generates multiple-choice questions with an answer key,
-    based on the stored course material.
+    Generates questions with configurable type and difficulty,
+    with each question tagged to which chunk it came from.
     """
-    chunks = get_all_chunks(source_name=source_name)
-    content = "\n\n".join(chunks)
+    chunks, metadatas = get_all_chunks(source_name=source_name, course=course)
 
-    system_prompt = """You are an exam question generator for a professor.
-You must respond with ONLY valid JSON, no extra text, no markdown code
-fences, no explanation before or after. Follow this exact structure:
+    if not chunks:
+        return None
 
+    # Number the chunks so the model can reference which one it used
+    numbered_content = "\n\n".join(
+        f"[Chunk {i}] {chunk}" for i, chunk in enumerate(chunks)
+    )
+
+    if question_type == "MCQ":
+        format_instruction = """Each item must have exactly 4 options
+labeled A-D with only one correct answer. Use this structure:
 [
   {
-    "question": "question text here",
+    "question": "...",
     "options": {"A": "...", "B": "...", "C": "...", "D": "..."},
     "correct_answer": "A",
-    "explanation": "one sentence on why this is correct"
+    "explanation": "...",
+    "source_chunk": 0
   }
-]
-"""
+]"""
+    else:  # Descriptive / short-answer
+        format_instruction = """Each item is a short-answer or descriptive
+question with a model answer. Use this structure:
+[
+  {
+    "question": "...",
+    "model_answer": "...",
+    "source_chunk": 0
+  }
+]"""
 
-    user_prompt = f"""Based on the following course material, generate
-{num_questions} multiple-choice questions that test real understanding
-of the concepts (not just memorized wording). Each question must have
-exactly 4 options with only one correct answer.
+    system_prompt = f"""You are an exam question generator for a professor.
+Respond with ONLY valid JSON, no extra text, no markdown fences.
+Every question must include "source_chunk": the number of the chunk
+(shown as [Chunk N] in the material) that the question was based on.
+{format_instruction}"""
+
+    user_prompt = f"""Generate {num_questions} {difficulty}-difficulty
+{question_type} questions based on the numbered course material below.
+Test real understanding, not memorized wording.
 
 Course material:
-{content}
+{numbered_content}
 """
 
     response = ollama.chat(
@@ -45,41 +72,42 @@ Course material:
     )
 
     raw_text = response["message"]["content"]
-
-    # Models sometimes wrap JSON in ```json ... ``` even when told not to.
-    # This cleans that up before parsing.
     cleaned = raw_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
     try:
         questions = json.loads(cleaned)
-        return questions
     except json.JSONDecodeError:
         print("⚠️ Could not parse JSON. Raw model output was:\n")
         print(raw_text)
         return None
 
+    # Attach the actual source metadata (filename/unit) using source_chunk index
+    for q in questions:
+        chunk_index = q.get("source_chunk")
+        if chunk_index is not None and 0 <= chunk_index < len(metadatas):
+            meta = metadatas[chunk_index]
+            q["source_label"] = f"{meta['source']} ({meta['unit']})"
+        else:
+            q["source_label"] = "Unknown"
 
-def print_quiz(questions):
-    """Nicely prints the generated quiz and a separate answer key."""
-    if not questions:
-        return
-
-    print("\n" + "=" * 50)
-    print("QUIZ")
-    print("=" * 50)
-    for i, q in enumerate(questions, start=1):
-        print(f"\nQ{i}. {q['question']}")
-        for letter, option_text in q["options"].items():
-            print(f"   {letter}) {option_text}")
-
-    print("\n" + "=" * 50)
-    print("ANSWER KEY")
-    print("=" * 50)
-    for i, q in enumerate(questions, start=1):
-        print(f"Q{i}: {q['correct_answer']} — {q['explanation']}")
+    return questions
 
 
 if __name__ == "__main__":
-    print("Generating quiz... (this can take 20-40 seconds on a local model)\n")
-    quiz = generate_mcqs(source_name="sample_lecture", num_questions=5)
-    print_quiz(quiz)
+    questions = generate_questions(
+        source_name="PCA",
+        num_questions=3,
+        question_type="MCQ",
+        difficulty="Medium"
+    )
+
+    if questions:
+        for i, q in enumerate(questions, start=1):
+            print(f"\nQ{i}. {q['question']}")
+            if "options" in q:
+                for letter, opt in q["options"].items():
+                    print(f"   {letter}) {opt}")
+                print(f"   Answer: {q['correct_answer']}")
+            else:
+                print(f"   Model answer: {q['model_answer']}")
+            print(f"   📚 Source: {q['source_label']}")

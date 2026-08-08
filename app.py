@@ -3,7 +3,7 @@ import os
 from content_agent import extract_text_from_pdf
 from vector_store import add_pdf_to_database
 from student_support_agent import answer_question
-from assessment_agent import generate_mcqs, print_quiz
+from assessment_agent import generate_questions
 from document_agent import generate_document
 from analytics_agent import analyze_performance
 from coordinator import classify_intent
@@ -116,37 +116,49 @@ elif page == "Ask a Question":
 # --- PAGE 3: ASSESSMENT AGENT ---
 elif page == "Generate Quiz":
     st.header("📝 Assessment Agent")
-    st.write("Generate multiple-choice questions from the course material.")
+    st.write("Generate questions from the course material.")
 
-    source_name = st.text_input(
-        "Source name (the filename you uploaded, without .pdf):",
-        value="sample_lecture"
-    )
+    source_name = st.text_input("Source name:", value="PCA")
+    course_filter = st.text_input("Course (optional):", value="")
+    question_type = st.selectbox("Question type:", ["MCQ", "Descriptive"])
+    difficulty = st.selectbox("Difficulty:", ["Easy", "Medium", "Hard"])
     num_questions = st.slider("Number of questions:", 1, 10, 5)
 
-    if st.button("Generate Quiz"):
+    if st.button("Generate Questions"):
         with st.spinner("Generating questions... this can take a minute on a local model"):
-            quiz = generate_mcqs(source_name=source_name, num_questions=num_questions)
+            course_arg = course_filter if course_filter.strip() else None
+            questions = generate_questions(
+                source_name=source_name,
+                course=course_arg,
+                num_questions=num_questions,
+                question_type=question_type,
+                difficulty=difficulty
+            )
 
-        if quiz is None:
-            st.error("Could not generate a valid quiz. Try again.")
+        if questions is None:
+            st.error("Could not generate valid questions. Try again.")
         else:
-            st.session_state["quiz"] = quiz  # save so it doesn't disappear on rerun
+            st.session_state["questions"] = questions
 
-    # Display quiz if we have one generated
-    if "quiz" in st.session_state:
-        quiz = st.session_state["quiz"]
+    if "questions" in st.session_state:
+        questions = st.session_state["questions"]
 
-        st.subheader("Quiz")
-        for i, q in enumerate(quiz, start=1):
+        st.subheader("Generated Questions (review before use)")
+        for i, q in enumerate(questions, start=1):
             st.markdown(f"**Q{i}. {q['question']}**")
-            for letter, option_text in q["options"].items():
-                st.write(f"{letter}) {option_text}")
-            st.write("")
 
-        with st.expander("📋 Show Answer Key"):
-            for i, q in enumerate(quiz, start=1):
-                st.write(f"Q{i}: {q['correct_answer']} — {q['explanation']}")
+            if "options" in q:
+                for letter, opt in q["options"].items():
+                    st.write(f"{letter}) {opt}")
+                with st.expander(f"Show answer — Q{i}"):
+                    st.write(f"**Answer:** {q['correct_answer']}")
+                    st.write(q.get("explanation", ""))
+            else:
+                with st.expander(f"Show model answer — Q{i}"):
+                    st.write(q["model_answer"])
+
+            st.caption(f"📚 Source: {q['source_label']}")
+            st.write("---")
 
 # --- PAGE 4: DOCUMENT AGENT ---
 elif page == "Draft Document":

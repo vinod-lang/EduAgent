@@ -74,17 +74,21 @@ if __name__ == "__main__":
         print(f"\n--- Result {i+1} ---")
         print(doc[:300])  # print first 300 characters of each match
 
-def get_all_chunks(source_name=None, limit=15):
+def get_all_chunks(source_name=None, course=None, limit=15):
     """
-    Grabs a batch of stored chunks to use as material for generating
-    questions. If source_name is given, only pulls chunks from that file.
+    Grabs a batch of stored chunks for quiz generation.
+    Can filter by source file and/or course.
     """
+    where_clause = {}
     if source_name:
-        results = collection.get(
-            where={"source": source_name},
-            limit=limit
-        )
+        where_clause["source"] = source_name
+    if course:
+        where_clause["course"] = course
+
+    if where_clause:
+        results = collection.get(where=where_clause, limit=limit)
     else:
         results = collection.get(limit=limit)
 
-    return results["documents"]
+    # Return both the text AND the metadata, so questions can cite their source
+    return results["documents"], results["metadatas"]
