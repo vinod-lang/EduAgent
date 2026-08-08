@@ -163,30 +163,36 @@ elif page == "Generate Quiz":
 # --- PAGE 4: DOCUMENT AGENT ---
 elif page == "Draft Document":
     st.header("📋 Document Agent")
-    st.write("Draft a notice, circular, or email in an institutional format.")
+    st.write("Pick a template and fill in the details — no need to write full sentences.")
 
-    doc_type = st.selectbox("Document type:", ["Notice", "Circular", "Email"])
-    instruction = st.text_area(
-        "What should this document say?",
-        placeholder="e.g. Inform students that the mid-semester exam is postponed to next Monday."
-    )
+    from document_agent import TEMPLATES  # import the template definitions
+
+    template_name = st.selectbox("Document type:", list(TEMPLATES.keys()))
+    fields_needed = TEMPLATES[template_name]["fields"]
+
+    # Dynamically create one input box per field this template needs
+    field_values = {}
+    for field in fields_needed:
+        label = field.replace("_", " ").capitalize()
+        field_values[field] = st.text_input(label, key=f"doc_{field}")
 
     if st.button("Generate Document"):
-        if instruction.strip() == "":
-            st.warning("Please describe what the document should say.")
+        missing = [f for f in fields_needed if not field_values[f].strip()]
+        if missing:
+            st.warning(f"Please fill in: {', '.join(missing)}")
         else:
             with st.spinner("Drafting document..."):
-                document = generate_document(instruction, doc_type)
+                document = generate_document(template_name, field_values)
             st.session_state["document"] = document
 
     if "document" in st.session_state:
-        st.subheader("Generated Document")
+        st.subheader("Generated Document (review before sending)")
         st.text_area("Result:", value=st.session_state["document"], height=300)
 
 # --- PAGE 5: ANALYTICS AGENT ---
 elif page == "Analytics":
     st.header("📊 Analytics Agent")
-    st.write("Upload a CSV of marks and attendance to identify students who may need support.")
+    st.write("Upload assessment history (multiple rows per student) to identify trend-based academic support needs.")
 
     csv_file = st.file_uploader("Choose a CSV file", type="csv")
 
@@ -197,17 +203,19 @@ elif page == "Analytics":
 
         df, summary = analyze_performance(save_path)
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Students", summary["total_students"])
-        col2.metric("Avg Marks", summary["class_average_marks"])
-        col3.metric("Avg Attendance", f"{summary['class_average_attendance']}%")
+        st.metric("Total Students", summary["total_students"])
 
-        st.subheader("⚠️ Students who may need support")
+        st.subheader("⚠️ Students who may benefit from faculty intervention")
         if summary["students_needing_support"]:
             for name in summary["students_needing_support"]:
                 st.write(f"- {name}")
         else:
             st.write("No students currently flagged. 🎉")
 
-        st.subheader("Full Data")
-        st.dataframe(df[["student_name", "average_marks", "attendance_percent", "needs_support"]])
+        st.subheader("Full Report (with evidence)")
+        for _, row in df.iterrows():
+            icon = "⚠️" if row["needs_support"] else "✅"
+            with st.expander(f"{icon} {row['student_name']}"):
+                st.write(f"**Latest marks:** {row['latest_marks']} ({row['marks_trend']})")
+                st.write(f"**Latest attendance:** {row['latest_attendance']}% ({row['attendance_trend']})")
+                st.write(f"**Reason:** {row['reasons']}")
