@@ -80,3 +80,29 @@ if __name__ == "__main__":
         "required_percent": "75"
     })
     print(doc)
+
+def generate_batch_attendance_warnings(flagged_students_df, course_name="General", required_percent="75"):
+    """
+    Takes a DataFrame of flagged students (from the Analytics Agent)
+    and generates one personalized attendance warning letter per student.
+
+    Returns a list of dicts: [{"student_name": ..., "document": ...}, ...]
+    """
+    generated_letters = []
+
+    for _, row in flagged_students_df.iterrows():
+        field_values = {
+            "student_name": row["student_name"],
+            "course": course_name,
+            "attendance_percent": str(row["latest_attendance"]),
+            "required_percent": required_percent
+        }
+
+        letter = generate_document("Attendance Warning", field_values)
+
+        generated_letters.append({
+            "student_name": row["student_name"],
+            "document": letter
+        })
+
+    return generated_letters

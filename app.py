@@ -8,6 +8,10 @@ from document_agent import generate_document
 from analytics_agent import analyze_performance
 from coordinator import classify_intent
 from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes
+from document_agent import generate_batch_attendance_warnings
+from db import init_db, add_course_if_new, get_all_courses, add_document_record, get_documents_for_course, log_activity, get_recent_activity
+
+init_db()  # creates tables if they don't exist yet — safe to call every run
 
 
 # Page setup
@@ -19,7 +23,7 @@ st.title("🎓 EduAgent — AI Assistant for Course Material")
 # "agent" gets control based on what the user wants to do.
 page = st.sidebar.radio(
     "Choose an action:",
-    ["Smart Assistant","Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics"]
+    ["Smart Assistant","Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics", "Courses & Activity"]
 )
 
 # Make sure a folder exists to temporarily store uploaded files
@@ -121,11 +125,17 @@ if page == "Upload Content":
 
         st.success(f"Uploaded: {uploaded_file.name}")
 
-        if st.button("Add to Database"):
-            with st.spinner("Processing PDF and storing chunks..."):
-                source_name = uploaded_file.name.replace(".pdf", "")
-                add_pdf_to_database(save_path, source_name, course=course, unit=unit)
-            st.success(f"✅ Added to '{course} / {unit}'!")
+    if st.button("Add to Database"):
+        with st.spinner("Processing PDF and storing chunks..."):
+            source_name = uploaded_file.name.replace(".pdf", "")
+            add_pdf_to_database(save_path, source_name, course=course, unit=unit)
+
+            # NEW: also record this in our persistent database
+            add_course_if_new(course)
+            add_document_record(source_name, course, unit, uploaded_file.name)
+            log_activity("upload", f"Uploaded '{uploaded_file.name}' to {course} / {unit}")
+
+        st.success(f"✅ Added to '{course} / {unit}'!")
 
 
 # --- PAGE 2: STUDENT SUPPORT AGENT ---
@@ -175,6 +185,7 @@ elif page == "Generate Quiz":
             st.error("Could not generate valid questions. Try again.")
         else:
             st.session_state["questions"] = questions
+            log_activity("generate_quiz", f"{num_questions} {question_type} questions from {source_name}")
 
     if "questions" in st.session_state:
         questions = st.session_state["questions"]
@@ -227,6 +238,7 @@ elif page == "Draft Document":
             with st.spinner("Drafting document..."):
                 document = generate_document(template_name, field_values)
             st.session_state["document"] = document
+            log_activity("generate_document", f"{template_name} document generated")
 
 if "document" in st.session_state:
     st.subheader("Generated Document (review before sending)")
@@ -270,3 +282,57 @@ elif page == "Analytics":
                 st.write(f"**Latest marks:** {row['latest_marks']} ({row['marks_trend']})")
                 st.write(f"**Latest attendance:** {row['latest_attendance']}% ({row['attendance_trend']})")
                 st.write(f"**Reason:** {row['reasons']}")
+                # --- BATCH WORKFLOW: Analytics → Document Agent ---
+        flagged_df = df[df["needs_support"]]
+
+        if len(flagged_df) > 0:
+            st.subheader("✉️ Batch Action")
+            st.write(f"{len(flagged_df)} student(s) flagged. Generate a personalized attendance warning letter for each with one click.")
+
+            course_name_input = st.text_input("Course name for these letters:", value="Machine Learning", key="batch_course")
+
+            if st.button("Generate Warning Letters for All Flagged Students"):
+                with st.spinner(f"Drafting {len(flagged_df)} letters..."):
+                    letters = generate_batch_attendance_warnings(flagged_df, course_name=course_name_input)
+                st.session_state["batch_letters"] = letters
+                log_activity("batch_warnings", f"{len(letters)} attendance warning letters generated")
+
+        if "batch_letters" in st.session_state:
+            st.success(f"✅ Generated {len(st.session_state['batch_letters'])} letters — review each before sending.")
+
+            for item in st.session_state["batch_letters"]:
+                with st.expander(f"📄 Letter for {item['student_name']}"):
+                    st.text_area("Content:", value=item["document"], height=200, key=f"letter_{item['student_name']}")
+
+                    docx_buffer = generate_docx_bytes(item["document"])
+                    st.download_button(
+                        label=f"📥 Download letter for {item['student_name']}",
+                        data=docx_buffer,
+                        file_name=f"Warning_{item['student_name'].replace(' ', '_')}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"download_{item['student_name']}"
+                    )
+
+elif page == "Courses & Activity":
+    st.header("📚 Courses & Activity Log")
+
+    st.subheader("Courses")
+    courses = get_all_courses()
+    if courses:
+        selected_course = st.selectbox("Select a course to see its material:", courses)
+        docs = get_documents_for_course(selected_course)
+        if docs:
+            for d in docs:
+                st.write(f"📄 **{d['filename']}** — {d['unit']} (uploaded {d['uploaded_at'][:16]})")
+        else:
+            st.write("No material uploaded yet for this course.")
+    else:
+        st.write("No courses yet — upload material under 'Upload Content' first.")
+
+    st.subheader("Recent Activity")
+    activity = get_recent_activity()
+    if activity:
+        for a in activity:
+            st.caption(f"🕒 {a['timestamp'][:16]} — **{a['action']}**: {a['details']}")
+    else:
+        st.write("No activity recorded yet.")
