@@ -73,10 +73,12 @@ if page == "Upload Content":
     st.header("📄 Content Agent")
     st.write("Upload a PDF to add it to the searchable course material.")
 
+    course = st.text_input("Course name:", value="Machine Learning")
+    unit = st.text_input("Unit/Topic:", value="Unit 1")
+
     uploaded_file = st.file_uploader("Choose a PDF", type="pdf")
 
     if uploaded_file is not None:
-        # Save the uploaded file to disk so our existing functions can read it
         save_path = os.path.join("uploads", uploaded_file.name)
         with open(save_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
@@ -85,10 +87,9 @@ if page == "Upload Content":
 
         if st.button("Add to Database"):
             with st.spinner("Processing PDF and storing chunks..."):
-                # source_name uses the filename without ".pdf" as a label
                 source_name = uploaded_file.name.replace(".pdf", "")
-                add_pdf_to_database(save_path, source_name)
-            st.success("✅ Added to the knowledge base!")
+                add_pdf_to_database(save_path, source_name, course=course, unit=unit)
+            st.success(f"✅ Added to '{course} / {unit}'!")
 
 
 # --- PAGE 2: STUDENT SUPPORT AGENT ---
@@ -96,6 +97,7 @@ elif page == "Ask a Question":
     st.header("💬 Student Support Agent")
     st.write("Ask a question based on the uploaded course material.")
 
+    course_filter = st.text_input("Limit search to course (optional):", value="")
     question = st.text_input("Your question:")
 
     if st.button("Ask"):
@@ -103,9 +105,12 @@ elif page == "Ask a Question":
             st.warning("Please type a question first.")
         else:
             with st.spinner("Thinking..."):
-                answer = answer_question(question)
+                course_arg = course_filter if course_filter.strip() else None
+                answer, sources = answer_question(question, course=course_arg)
             st.markdown("**Answer:**")
             st.write(answer)
+            if sources:
+                st.caption(f"📚 Source: {', '.join(sources)}")
 
 
 # --- PAGE 3: ASSESSMENT AGENT ---

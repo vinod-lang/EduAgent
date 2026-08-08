@@ -21,18 +21,21 @@ collection = client.get_or_create_collection(
 )
 
 
-def add_pdf_to_database(pdf_path, source_name):
+def add_pdf_to_database(pdf_path, source_name, course="General", unit="Unit 1"):
     """
-    Reads a PDF, chunks it, and stores each chunk in ChromaDB.
+    Reads a PDF, chunks it, and stores each chunk in ChromaDB —
+    now tagged with which course and unit it belongs to.
     """
     text = extract_text_from_pdf(pdf_path)
     chunks = chunk_text(text)
 
-    # ChromaDB needs a unique ID for every chunk we store
     ids = [f"{source_name}_chunk_{i}" for i in range(len(chunks))]
 
-    # metadata lets us remember which file each chunk came from
-    metadatas = [{"source": source_name} for _ in chunks]
+    # Every chunk now remembers which file, course, and unit it came from
+    metadatas = [
+        {"source": source_name, "course": course, "unit": unit}
+        for _ in chunks
+    ]
 
     collection.add(
         documents=chunks,
@@ -40,19 +43,22 @@ def add_pdf_to_database(pdf_path, source_name):
         metadatas=metadatas
     )
 
-    print(f"✅ Stored {len(chunks)} chunks from '{source_name}' in the database")
+    print(f"✅ Stored {len(chunks)} chunks from '{source_name}' ({course} / {unit}) in the database")
 
 
-def search_database(query, n_results=3):
+def search_database(query, n_results=3, course=None):
     """
-    Given a question, finds the most relevant chunks stored in ChromaDB.
+    Given a question, finds the most relevant chunks — optionally
+    restricted to a single course.
     """
+    query_filter = {"course": course} if course else None
+
     results = collection.query(
         query_texts=[query],
-        n_results=n_results
+        n_results=n_results,
+        where=query_filter
     )
     return results
-
 
 if __name__ == "__main__":
     # Add your sample PDF to the database
