@@ -148,6 +148,8 @@ def generate_personalized_practice(flagged_students_df, source_name, course=None
 
     Returns: [{"student_name": ..., "questions": [...]}, ...]
     """
+    if 'practice_eligible' in flagged_students_df:
+        flagged_students_df = flagged_students_df.loc[flagged_students_df['practice_eligible']]
     practice_sets = []
 
     for _, row in flagged_students_df.iterrows():

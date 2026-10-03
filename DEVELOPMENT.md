@@ -13,9 +13,14 @@ Tests mock Ollama and vector-store boundaries. Database and Streamlit tests use
 pytest temporary directories. Never point test fixtures at existing runtime data.
 Offline environment variables prevent accidental model downloads in tests.
 
-Four strict expected failures document unresolved trend-analytics validation:
-missing numeric values, nonnumeric values, missing columns, and duplicate names.
-They are not passing behavior. Remove each marker when its later-build fix lands.
+The four original analytics expected failures are resolved and run as normal tests.
+Analytics accepts snapshot rows (student_name, attendance/attendance_percent,
+one or more numeric marks columns) or trend rows (student_name,
+assessment_number, marks, attendance_percent; optional student_id).
+For trend histories, provide student_id whenever names may be shared: duplicate
+assessment numbers under a name are rejected, and disjoint same-name histories
+cannot be distinguished without IDs. Snapshot analysis keeps separate row IDs.
+Missing data and academic concerns are independent; CSV export follows the view.
 
 The current embedding and LLM remain all-MiniLM-L6-v2 and llama3.2:3b. A real
 app run opens writable runtime storage; use isolated copies for startup checks.

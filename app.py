@@ -5,7 +5,8 @@ from material_service import upload_material, delete_material, edit_hierarchy, M
 from student_support_agent import answer_question
 from assessment_agent import generate_questions
 from document_agent import generate_document
-from analytics_agent import analyze_performance
+from analytics_agent import (analyze_performance, AnalyticsValidationError, Thresholds, DEFAULT_THRESHOLDS,
+    filter_results, display_results, analytics_csv_bytes, attendance_warning_candidates, practice_candidates)
 from coordinator import classify_intent
 from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes, generate_question_paper_pdf_bytes
 from document_agent import generate_batch_attendance_warnings
@@ -260,90 +261,74 @@ elif page == "Draft Document":
 elif page == "Analytics":
     
     st.header("📊 Analytics Agent")
-    st.write("Upload assessment history (multiple rows per student) to identify trend-based academic support needs.")
-
+    st.write("Upload snapshot marks or multi-assessment history. Analysis stays in memory.")
     csv_file = st.file_uploader("Choose a CSV file", type="csv")
-
+    marks_limit = st.number_input("Marks concern threshold", min_value=0.0, value=float(DEFAULT_THRESHOLDS.marks))
+    attendance_limit = st.number_input("Attendance concern threshold (%)", min_value=0.0, max_value=100.0, value=float(DEFAULT_THRESHOLDS.attendance))
+    marks_decline = st.number_input("Marks decline threshold", min_value=0.1, value=float(DEFAULT_THRESHOLDS.marks_decline))
+    attendance_decline = st.number_input("Attendance decline threshold", min_value=0.1, value=float(DEFAULT_THRESHOLDS.attendance_decline))
     if csv_file is not None:
-        save_path = os.path.join("uploads", csv_file.name)
-        with open(save_path, "wb") as f:
-            f.write(csv_file.getbuffer())
-
-        df, summary = analyze_performance(save_path)
-
-        st.metric("Total Students", summary["total_students"])
-
-        st.subheader("⚠️ Students who may benefit from faculty intervention")
-        if summary["students_needing_support"]:
-            for name in summary["students_needing_support"]:
-                st.write(f"- {name}")
+        try:
+            import io
+            df, summary = analyze_performance(io.BytesIO(csv_file.getvalue()), thresholds=Thresholds(marks_limit, attendance_limit, marks_decline, attendance_decline))
+        except AnalyticsValidationError as exc:
+            st.error(str(exc))
         else:
-            st.write("No students currently flagged. 🎉")
-
-        st.subheader("Full Report (with evidence)")
-        for _, row in df.iterrows():
-            icon = "⚠️" if row["needs_support"] else "✅"
-            with st.expander(f"{icon} {row['student_name']}"):
-                st.write(f"**Latest marks:** {row['latest_marks']} ({row['marks_trend']})")
-                st.write(f"**Latest attendance:** {row['latest_attendance']}% ({row['attendance_trend']})")
-                st.write(f"**Reason:** {row['reasons']}")
-                # --- BATCH WORKFLOW: Analytics → Document Agent ---
-        flagged_df = df[df["needs_support"]]
-
-        if len(flagged_df) > 0:
-            st.subheader("✉️ Batch Action")
-            st.write(f"{len(flagged_df)} student(s) flagged. Generate a personalized attendance warning letter for each with one click.")
-
+            st.caption(f"Detected mode: {summary['mode']}")
+            st.metric("Total Students", summary['total_students'])
+            st.metric("Academic concerns", summary['academic_concerns'])
+            st.metric("Incomplete data", summary['incomplete_data'])
+            st.caption(f"Complete: {summary['complete_data']}; concern + incomplete: {summary['concern_and_incomplete']}")
+            def available(value):
+                return "Unavailable" if value != value else f"{value:.2f}"
+            st.write(f"Class marks average: {available(summary['class_average_marks'])}; attendance average: {available(summary['average_attendance'])}%. Based on {summary['averages_basis'].lower()}.")
+            st.caption(f"Marks available for {summary['marks_available_count']} students; attendance available for {summary['attendance_available_count']}.")
+            if summary['mode'] == 'trend':
+                st.write({'Marks trends': summary['marks_trends'], 'Attendance trends': summary['attendance_trends']})
+            view = st.selectbox("Investigation view", ['All students','Academic concern','Incomplete data','Both'])
+            shown = filter_results(df, view)
+            st.dataframe(display_results(shown), hide_index=True)
+            st.download_button("Download current view (CSV)", analytics_csv_bytes(shown), file_name='analytics_view.csv', mime='text/csv')
+            for _, row in shown.iterrows():
+                icon = '⚠️' if row['academic_concern'] or row['incomplete_data'] else '✅'
+                with st.expander(f"{icon} {row['student_name']} ({row['analysis_id']})"):
+                    st.write(row['reasons'])
+            warning_students = attendance_warning_candidates(shown)
+            practice_students = practice_candidates(shown)
             course_name_input = st.text_input("Course name for these letters:", value="Machine Learning", key="batch_course")
-
-            if st.button("Generate Warning Letters for All Flagged Students"):
-                with st.spinner(f"Drafting {len(flagged_df)} letters..."):
-                    letters = generate_batch_attendance_warnings(flagged_df, course_name=course_name_input)
-                st.session_state["batch_letters"] = letters
-                log_activity("batch_warnings", f"{len(letters)} attendance warning letters generated")
-
-        if "batch_letters" in st.session_state:
-            st.success(f"✅ Generated {len(st.session_state['batch_letters'])} letters — review each before sending.")
-
-            for item in st.session_state["batch_letters"]:
-                with st.expander(f"📄 Letter for {item['student_name']}"):
-                    st.text_area("Content:", value=item["document"], height=200, key=f"letter_{item['student_name']}")
-
-                    docx_buffer = generate_docx_bytes(item["document"])
-                    st.download_button(
-                        label=f"📥 Download letter for {item['student_name']}",
-                        data=docx_buffer,
-                        file_name=f"Warning_{item['student_name'].replace(' ', '_')}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key=f"download_{item['student_name']}"
-                    )
-
-        # --- PERSONALIZED PRACTICE WORKFLOW: Analytics → Assessment Agent ---
-        if len(flagged_df) > 0:
-            st.subheader("🎯 Personalized Practice")
-            st.write("Generate a short, easier practice quiz targeted at each struggling student.")
-
-            practice_source = st.text_input("Source material to draw from:", value="PCA", key="practice_source")
-
-            if st.button("Generate Personalized Practice Quizzes"):
-                with st.spinner(f"Generating practice quizzes for {len(flagged_df)} student(s)..."):
-                    practice_sets = generate_personalized_practice(flagged_df, source_name=practice_source)
-                st.session_state["practice_sets"] = practice_sets
-                log_activity("personalized_practice", f"Generated practice quizzes for {len(flagged_df)} students")
-
-        if "practice_sets" in st.session_state:
-            for item in st.session_state["practice_sets"]:
-                with st.expander(f"🎯 Practice quiz for {item['student_name']}"):
-                    if item["questions"]:
-                        for i, q in enumerate(item["questions"], start=1):
+            # Bind generated session output to this exact data/config/filter; never show stale letters.
+            signature = (csv_file.getvalue(), marks_limit, attendance_limit, marks_decline, attendance_decline, view)
+            if st.session_state.get('analytics_signature') != signature:
+                st.session_state.pop('batch_letters', None)
+                st.session_state.pop('practice_sets', None)
+                st.session_state['analytics_signature'] = signature
+            if not warning_students.empty:
+                if st.button("Generate Warning Letters for Attendance Concerns"):
+                    letters = generate_batch_attendance_warnings(warning_students, course_name=course_name_input, required_percent=str(attendance_limit))
+                    st.session_state['batch_letters'] = letters
+                    log_activity('batch_warnings', 'Attendance warning batch generated')
+            else:
+                st.caption("No confirmed low-attendance students in this view. Missing attendance requires verification.")
+            for pos, item in enumerate(st.session_state.get('batch_letters', [])):
+                with st.expander(f"Letter for {item['student_name']} ({pos+1})"):
+                    st.text_area("Content:", value=item['document'], key=f"letter_{pos}")
+                    st.download_button("Download letter (DOCX)", generate_docx_bytes(item['document']), file_name=f'Warning_{pos+1}.docx', key=f'download_letter_{pos}')
+            if not practice_students.empty:
+                practice_source = st.text_input("Source material to draw from:", value="PCA", key="practice_source")
+                if st.button("Generate Personalized Practice Quizzes"):
+                    st.session_state['practice_sets'] = generate_personalized_practice(practice_students, source_name=practice_source)
+                    log_activity('personalized_practice', 'Practice batch generated')
+            for pos, item in enumerate(st.session_state.get('practice_sets', [])):
+                with st.expander(f"Practice quiz for {item['student_name']} ({pos+1})"):
+                    if item['questions']:
+                        for i, q in enumerate(item['questions'], start=1):
                             st.markdown(f"**Q{i}. {q['question']}**")
-                            if "options" in q:
-                                for letter, opt in q["options"].items():
+                            if 'options' in q:
+                                for letter, opt in q['options'].items():
                                     st.write(f"{letter}) {opt}")
                             st.caption(f"Bloom's level: {q.get('bloom_level', 'N/A')} | Source: {q['source_label']}")
                     else:
                         st.error("Could not generate questions for this student.")
-        # ↑↑↑ END OF NEW BLOCK ↑↑↑
 
 elif page == "Courses & Activity":
     st.header("📚 Courses & Activity Log")
