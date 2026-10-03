@@ -67,13 +67,13 @@ def test_default_dashboard_and_empty_states(dashboard_app):
     assert not app.exception and app.sidebar.radio[0].value == 'Professor Dashboard'
     assert [item.value for item in app.metric] == ['0', '0', '0']
     assert len(app.info) == 3
-    assert len(app.sidebar.radio[0].options) == 9
+    assert len(app.sidebar.radio[0].options) == 8
 
 
 @pytest.mark.parametrize('target', QUICK_ACTIONS)
 def test_dashboard_quick_navigation(dashboard_app, target):
     next(button for button in dashboard_app.button if button.label == target).click().run()
-    assert not dashboard_app.exception and dashboard_app.sidebar.radio[0].value == target
+    assert not dashboard_app.exception and dashboard_app.sidebar.radio[0].value == QUICK_ACTIONS[target]
 
 
 def test_upload_types_and_hierarchy(dashboard_app):
@@ -105,7 +105,7 @@ def test_image_upload_ui(storage, agents, monkeypatch, tmp_path, unavailable):
         assert not db.list_materials() and not storage[1].rows
     else:
         assert app.success and any('Synthetic PCA OCR text' in item.value for item in app.text)
-        app.sidebar.radio[0].set_value('Courses & Activity').run()
+        app.sidebar.radio[0].set_value('Professor Dashboard').run()
         assert any(item.value == 'Image/OCR' for item in app.caption)
         assert not app.exception
 

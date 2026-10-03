@@ -144,3 +144,12 @@ Material choices include upload timestamps so same-name materials in the same
 hierarchy can be selected separately using UUID-backed values. Identical human
 source labels are rendered once; distinct material IDs remain in structured
 provenance for inspection.
+
+
+## Build 7: Professor workspace
+
+Professor Dashboard groups Overview, Smart Assistant / Quick Actions, Academic Knowledge, and Recent Activity into tabs. Managed material records form a naturally sorted Course → Semester → Subject → Unit → Material browser. Leaf controls call the existing exact-ID hierarchy/deletion services; edits rerun the browser, deletion requires explicit confirmation, and failures retain service warnings. Legacy registrations remain informational and separate; no managed ownership or missing hierarchy is inferred.
+
+Smart Assistant retains the existing coordinator and dispatch behavior, including quiz_and_notice. Create Assessment temporarily opens Generate Quiz; Question Paper remains available separately. Old navigation states map to the dashboard or Activity Log. Activity Log shows only sanitized known actions and parsed timestamps, never stored details or arbitrary action text. Eight navigation pages remain.
+
+Workspace tests use temporary SQLite/uploads and deterministic vector substitutes. AI is mocked. No production storage migration, re-embedding, provider/model, retrieval, analytics, or assessment behavior changes are introduced.

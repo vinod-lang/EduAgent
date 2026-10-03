@@ -48,7 +48,7 @@ def test_management_ui(storage,hierarchy,agents,monkeypatch,tmp_path):
     assert {'Semester:','Subject:','Unit:'}.issubset({item.label for item in app.text_input})
     next(b for b in app.button if b.label=='Add to Database').click().run()
     assert not app.exception and any('Choose a PDF' in item.value for item in app.warning)
-    app.sidebar.radio[0].set_value('Courses & Activity').run()
+    app.sidebar.radio[0].set_value('Professor Dashboard').run()
     assert not app.exception
     assert any('Legacy material' in item.value for item in app.caption)
     assert any('notes.pdf' in item.value for item in app.markdown)
@@ -61,11 +61,11 @@ def test_ui_edit_and_delete(storage,hierarchy,agents,monkeypatch,tmp_path):
     monkeypatch.setattr(service,'vectors_api',lambda _:storage[1])
     m=upload(storage,hierarchy)['material']
     app=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'app.py'),default_timeout=20).run()
-    app.sidebar.radio[0].set_value('Courses & Activity').run()
+    app.sidebar.radio[0].set_value('Professor Dashboard').run()
     next(i for i in app.text_input if i.label=='Unit').set_value('Unit Edited')
     next(b for b in app.button if b.label=='Save hierarchy').click().run()
     assert not app.exception and db.get_material(m['material_id'])['unit']=='Unit Edited'
-    assert any('Unit Edited' in row.value for row in app.markdown)
+    assert any('Unit Edited' in row.label for row in app.expander)
     next(c for c in app.checkbox if c.label=='Confirm permanent deletion').check().run()
     next(b for b in app.button if b.label=='Delete material').click().run()
     assert not app.exception and db.get_material(m['material_id']) is None

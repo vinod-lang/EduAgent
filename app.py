@@ -1,6 +1,7 @@
 from retrieval import RetrievalError
 from rag_ui import available_courses, scope_options
-from dashboard import get_dashboard_summary, material_type, QUICK_ACTIONS
+from dashboard import get_dashboard_summary, get_activity_view, PAGES
+from workspace_ui import render_dashboard, render_activity
 from config import get_max_upload_bytes, ConfigurationError
 import streamlit as st
 import os
@@ -36,12 +37,13 @@ init_db()  # creates tables if they don't exist yet — safe to call every run
 st.set_page_config(page_title="EduAgent", page_icon="🎓", layout="centered")
 st.title("🎓 EduAgent — AI Assistant for Course Material")
 
-# --- COORDINATOR LOGIC ---
-# This sidebar selection IS the coordinator: it decides which
-# "agent" gets control based on what the user wants to do.
+# Dashboard hosts the coordinator UI; sidebar navigation opens dedicated workflows.
+legacy_navigation = {"Smart Assistant": "Professor Dashboard", "Courses & Activity": "Activity Log"}
+if st.session_state.get("navigation") in legacy_navigation:
+    st.session_state["navigation"] = legacy_navigation[st.session_state["navigation"]]
 page = st.sidebar.radio(
     "Choose an action:",
-    ["Professor Dashboard","Smart Assistant","Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics", "Courses & Activity", "Question Paper"], key="navigation"
+    PAGES, key="navigation"
 )
 
 # Make sure a folder exists to temporarily store uploaded files
@@ -52,112 +54,10 @@ def navigate_to(page_name):
 
 
 if page == "Professor Dashboard":
-    st.header("Professor Dashboard")
-    overview = get_dashboard_summary()
-    cards = st.columns(3)
-    cards[0].metric("Registered courses", overview['course_count'])
-    cards[1].metric("Managed materials", overview['managed_count'])
-    cards[2].metric("Legacy registered documents", overview['legacy_count'])
-    st.caption("Counts use SQLite records. Legacy records do not verify indexed vectors; unregistered Chroma content is not counted.")
-    st.subheader("Quick actions")
-    for target in QUICK_ACTIONS:
-        st.button(target, on_click=navigate_to, args=(target,))
-    st.subheader("Managed materials by course")
-    if overview['materials_by_course']:
-        for course_name, count in overview['materials_by_course'].items():
-            st.write(f"{course_name}: {count}")
-    else:
-        st.info("No registered courses yet. Upload academic content to get started.")
-    st.subheader("Recently uploaded managed materials")
-    for material in overview['recent_materials']:
-        st.write(material['original_filename'])
-        st.caption(material_type(material) + " · " + " → ".join(material[k] for k in ('course', 'semester', 'subject', 'unit')))
-    if not overview['recent_materials']:
-        st.info("No managed materials yet. Existing legacy records remain available in Courses & Activity.")
-    st.subheader("Recent activity")
-    for activity in overview['recent_activity']:
-        st.write(f"{activity['timestamp']} — {activity['action']}")
-    if not overview['recent_activity']:
-        st.info("No recent activity.")
-
-
-# --- COORDINATOR AGENT (smart routing) ---
-if page == "Smart Assistant":
-    st.header("🧭 Coordinator Agent")
-    st.write("Type what you want in plain English. The coordinator will decide which agent(s) should handle it.")
-
-    user_input = st.text_area(
-        "What do you need?",
-        placeholder="e.g. 'Make a 10-question quiz from Unit 3 and a notice announcing it for tomorrow'"
-    )
-
-    if st.button("Submit"):
-        if user_input.strip() == "":
-            st.warning("Please type a request.")
-        else:
-            with st.spinner("Deciding which agent(s) should handle this..."):
-                intent = call_ai(classify_intent, user_input)
-
-            st.caption(f"🔀 Routed to: **{intent}**")
-
-            if intent == "question":
-                with st.spinner("Thinking..."):
-                    answer, sources = call_ai(answer_question, user_input)
-                st.write(answer)
-                if sources:
-                    st.caption(f"📚 Source: {', '.join(sources)}")
-
-            elif intent == "quiz":
-                with st.spinner("Generating quiz..."):
-                    questions = call_ai(generate_questions, source_name="PCA", num_questions=5)
-                if questions:
-                    for i, q in enumerate(questions, start=1):
-                        st.markdown(f"**Q{i}. {q['question']}**")
-                        if "options" in q:
-                            for letter, opt in q["options"].items():
-                                st.write(f"{letter}) {opt}")
-                else:
-                    st.error("Could not generate a valid quiz.")
-
-            elif intent == "document":
-                with st.spinner("Drafting document..."):
-                    doc = call_ai(generate_document, "Notice", {
-                        "course": "General", "subject": user_input,
-                        "details": user_input, "date": "TBD"
-                    })
-                st.text_area("Result:", value=doc, height=250)
-
-            elif intent == "quiz_and_notice":
-                # STEP 1: Assessment Agent runs first
-                with st.spinner("Step 1/2 — Generating quiz..."):
-                    questions = call_ai(generate_questions, source_name="PCA", num_questions=5)
-
-                # STEP 2: Document Agent runs next, referencing the quiz
-                with st.spinner("Step 2/2 — Drafting announcement notice..."):
-                    doc = call_ai(generate_document, "Notice", {
-                        "course": "General",
-                        "subject": "Upcoming Test",
-                        "details": user_input,
-                        "date": "Tomorrow"
-                    })
-
-                st.success("✅ Two agents completed this request — please review both before use.")
-
-                st.subheader("1️⃣ Generated Quiz (Assessment Agent)")
-                if questions:
-                    for i, q in enumerate(questions, start=1):
-                        st.markdown(f"**Q{i}. {q['question']}**")
-                        if "options" in q:
-                            for letter, opt in q["options"].items():
-                                st.write(f"{letter}) {opt}")
-                else:
-                    st.error("Quiz generation failed.")
-
-                st.subheader("2️⃣ Generated Notice (Document Agent)")
-                st.text_area("Notice:", value=doc, height=200)
-
-            else:
-                st.info("I couldn't confidently classify this request. Try rephrasing, or use the sidebar tabs directly.")
+    render_dashboard(get_dashboard_summary(), list_materials(), get_all_courses(),
+                     call_ai=call_ai, classify_intent=classify_intent, answer_question=answer_question,
+                     generate_questions=generate_questions, generate_document=generate_document,
+                     navigate_to=navigate_to, edit_hierarchy=edit_hierarchy, delete_material=delete_material)
 
 
 # --- PAGE 1: CONTENT AGENT ---
@@ -413,63 +313,10 @@ elif page == "Analytics":
                     else:
                         st.error("Could not generate questions for this student.")
 
-elif page == "Courses & Activity":
-    st.header("📚 Courses & Activity Log")
-    notice = st.session_state.pop("material_notice", None)
-    if notice:
-        st.success(notice)
-
-    st.subheader("Courses")
-    courses = get_all_courses()
-    if courses:
-        selected_course = st.selectbox("Select a course to see its material:", courses)
-        docs = legacy_materials(selected_course)
-        managed = list_materials(selected_course)
-        for d in docs:
-            st.write(f"📄 **{d['filename']}** — {selected_course} → {d['semester']} → {d['subject']} → {d['unit']}")
-            st.caption(f"Uploaded: {(d.get('uploaded_at') or 'Unknown')[:16]}. Legacy material — ownership migration is required before editing or deletion.")
-        for material in managed:
-            identity = material['material_id']
-            st.caption(f"Uploaded: {material['created_at'][:16]}")
-            st.write(f"📄 **{material['original_filename']}** — " + " → ".join(material[k] for k in ('course','semester','subject','unit')))
-            st.caption(material_type(material))
-            with st.expander(f"Manage {material['original_filename']} ({identity[:8]})"):
-                values = {k: st.text_input(k.capitalize(), value=material[k], key=f"hierarchy_{identity}_{k}") for k in ('course','semester','subject','unit')}
-                if st.button("Save hierarchy", key=f"edit_{identity}"):
-                    try:
-                        outcome = edit_hierarchy(identity, values)
-                        if outcome['success']:
-                            st.session_state['material_notice'] = "Hierarchy updated in registry and exact vector metadata."
-                            st.rerun()
-                        else:
-                            st.error(outcome['error'])
-                        for warning in outcome.get('warnings', []):
-                            st.warning(warning)
-                    except MaterialError as exc:
-                        st.error(str(exc))
-                confirm = st.checkbox("Confirm permanent deletion", key=f"confirm_{identity}")
-                if st.button("Delete material", key=f"delete_{identity}", disabled=not confirm):
-                    outcome = delete_material(identity)
-                    if outcome['success']:
-                        st.session_state['material_notice'] = f"Material deleted: {outcome['vectors_deleted']} vectors removed; upload removed: {outcome['file_deleted']}. " + " ".join(outcome['warnings'])
-                        st.rerun()
-                    else:
-                        st.error(outcome['error'])
-                    for warning in outcome.get('warnings', []):
-                        st.warning(warning)
-        if not docs and not managed:
-            st.write("No material uploaded yet for this course.")
-    else:
-        st.write("No courses yet — upload material under 'Upload Content' first.")
-
-    st.subheader("Recent Activity")
-    activity = get_recent_activity()
-    if activity:
-        for a in activity:
-            st.caption(f"🕒 {a['timestamp'][:16]} — **{a['action']}**: {a['details']}")
-    else:
-        st.write("No activity recorded yet.")
-
+elif page == "Activity Log":
+    st.header("Activity Log")
+    st.caption("Recorded actions and timestamps only. Raw details, questions, student records and document contents are not displayed.")
+    render_activity(get_activity_view(limit=20))
 
 
 elif page == "Question Paper":
