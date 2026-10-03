@@ -7,9 +7,11 @@ from assessment_agent import generate_questions
 from document_agent import generate_document
 from analytics_agent import analyze_performance
 from coordinator import classify_intent
-from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes
+from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes, generate_question_paper_pdf_bytes
 from document_agent import generate_batch_attendance_warnings
 from db import init_db, add_course_if_new, get_all_courses, add_document_record, get_documents_for_course, log_activity, get_recent_activity
+from assessment_agent import generate_questions, generate_personalized_practice
+from assessment_agent import generate_questions, generate_personalized_practice, generate_question_paper
 
 init_db()  # creates tables if they don't exist yet — safe to call every run
 
@@ -23,7 +25,7 @@ st.title("🎓 EduAgent — AI Assistant for Course Material")
 # "agent" gets control based on what the user wants to do.
 page = st.sidebar.radio(
     "Choose an action:",
-    ["Smart Assistant","Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics", "Courses & Activity"]
+    ["Smart Assistant","Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics", "Courses & Activity", "Question Paper"]
 )
 
 # Make sure a folder exists to temporarily store uploaded files
@@ -254,6 +256,7 @@ if "document" in st.session_state:
 
 # --- PAGE 5: ANALYTICS AGENT ---
 elif page == "Analytics":
+    
     st.header("📊 Analytics Agent")
     st.write("Upload assessment history (multiple rows per student) to identify trend-based academic support needs.")
 
@@ -313,6 +316,33 @@ elif page == "Analytics":
                         key=f"download_{item['student_name']}"
                     )
 
+        # --- PERSONALIZED PRACTICE WORKFLOW: Analytics → Assessment Agent ---
+        if len(flagged_df) > 0:
+            st.subheader("🎯 Personalized Practice")
+            st.write("Generate a short, easier practice quiz targeted at each struggling student.")
+
+            practice_source = st.text_input("Source material to draw from:", value="PCA", key="practice_source")
+
+            if st.button("Generate Personalized Practice Quizzes"):
+                with st.spinner(f"Generating practice quizzes for {len(flagged_df)} student(s)..."):
+                    practice_sets = generate_personalized_practice(flagged_df, source_name=practice_source)
+                st.session_state["practice_sets"] = practice_sets
+                log_activity("personalized_practice", f"Generated practice quizzes for {len(flagged_df)} students")
+
+        if "practice_sets" in st.session_state:
+            for item in st.session_state["practice_sets"]:
+                with st.expander(f"🎯 Practice quiz for {item['student_name']}"):
+                    if item["questions"]:
+                        for i, q in enumerate(item["questions"], start=1):
+                            st.markdown(f"**Q{i}. {q['question']}**")
+                            if "options" in q:
+                                for letter, opt in q["options"].items():
+                                    st.write(f"{letter}) {opt}")
+                            st.caption(f"Bloom's level: {q.get('bloom_level', 'N/A')} | Source: {q['source_label']}")
+                    else:
+                        st.error("Could not generate questions for this student.")
+        # ↑↑↑ END OF NEW BLOCK ↑↑↑
+
 elif page == "Courses & Activity":
     st.header("📚 Courses & Activity Log")
 
@@ -336,3 +366,63 @@ elif page == "Courses & Activity":
             st.caption(f"🕒 {a['timestamp'][:16]} — **{a['action']}**: {a['details']}")
     else:
         st.write("No activity recorded yet.")
+
+
+
+elif page == "Question Paper":
+    st.header("📃 Question Paper Generator")
+    st.write("Configure a full test with marks distribution — mirrors how a real exam is assembled.")
+
+    source_name = st.text_input("Source material:", value="PCA", key="qp_source")
+    course_filter = st.text_input("Course (optional):", value="", key="qp_course")
+    difficulty = st.selectbox("Overall difficulty:", ["Easy", "Medium", "Hard"], key="qp_difficulty")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        num_mcq = st.number_input("Number of MCQs:", min_value=0, max_value=20, value=5)
+        marks_per_mcq = st.number_input("Marks per MCQ:", min_value=1, max_value=10, value=2)
+    with col2:
+        num_descriptive = st.number_input("Number of descriptive questions:", min_value=0, max_value=10, value=2)
+        marks_per_descriptive = st.number_input("Marks per descriptive:", min_value=1, max_value=20, value=5)
+
+    if st.button("Generate Question Paper"):
+        with st.spinner("Assembling question paper..."):
+            course_arg = course_filter if course_filter.strip() else None
+            paper = generate_question_paper(
+                source_name=source_name,
+                course=course_arg,
+                num_mcq=num_mcq,
+                num_descriptive=num_descriptive,
+                marks_per_mcq=marks_per_mcq,
+                marks_per_descriptive=marks_per_descriptive,
+                difficulty=difficulty
+            )
+        st.session_state["question_paper"] = paper
+        log_activity("generate_question_paper", f"{num_mcq} MCQ + {num_descriptive} descriptive, {paper['total_marks']} total marks")
+
+    if "question_paper" in st.session_state:
+        paper = st.session_state["question_paper"]
+
+        st.success(f"✅ Total Marks: {paper['total_marks']}")
+
+        pdf_buffer = generate_question_paper_pdf_bytes(paper, title=f"{source_name} — Question Paper")
+        st.download_button(
+            label="📥 Download Question Paper (PDF)",
+            data=pdf_buffer,
+            file_name=f"{source_name.replace(' ', '_')}_paper.pdf",
+            mime="application/pdf"
+        )
+
+        if paper["mcq_section"]:
+            st.subheader("Section A: MCQs")
+            for i, q in enumerate(paper["mcq_section"], start=1):
+                st.markdown(f"**Q{i}. [{q['marks']} marks] {q['question']}**")
+                for letter, opt in q["options"].items():
+                    st.write(f"{letter}) {opt}")
+                st.caption(f"📚 Source: {q['source_label']}")
+
+        if paper["descriptive_section"]:
+            st.subheader("Section B: Descriptive")
+            for i, q in enumerate(paper["descriptive_section"], start=1):
+                st.markdown(f"**Q{i}. [{q['marks']} marks] {q['question']}**")
+                st.caption(f"📚 Source: {q['source_label']}")

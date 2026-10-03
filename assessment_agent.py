@@ -10,18 +10,18 @@ def generate_questions(
     course=None,
     num_questions=5,
     question_type="MCQ",
-    difficulty="Medium"
+    difficulty="Medium",
+    bloom_level="Understand"
 ):
     """
-    Generates questions with configurable type and difficulty,
-    with each question tagged to which chunk it came from.
+    Generates questions with configurable type, difficulty, and
+    Bloom's Taxonomy cognitive level.
     """
     chunks, metadatas = get_all_chunks(source_name=source_name, course=course)
 
     if not chunks:
         return None
 
-    # Number the chunks so the model can reference which one it used
     numbered_content = "\n\n".join(
         f"[Chunk {i}] {chunk}" for i, chunk in enumerate(chunks)
     )
@@ -35,29 +35,39 @@ labeled A-D with only one correct answer. Use this structure:
     "options": {"A": "...", "B": "...", "C": "...", "D": "..."},
     "correct_answer": "A",
     "explanation": "...",
-    "source_chunk": 0
+    "source_chunk": 0,
+    "bloom_level": "Understand"
   }
 ]"""
-    else:  # Descriptive / short-answer
+    else:
         format_instruction = """Each item is a short-answer or descriptive
 question with a model answer. Use this structure:
 [
   {
     "question": "...",
     "model_answer": "...",
-    "source_chunk": 0
+    "source_chunk": 0,
+    "bloom_level": "Understand"
   }
 ]"""
 
+    bloom_guidance = {
+        "Remember": "Test recall of facts, definitions, and terminology.",
+        "Understand": "Test explanation of concepts in the student's own words.",
+        "Apply": "Test applying a concept to solve a new problem or scenario.",
+        "Analyze": "Test breaking down a concept into its components or comparing ideas."
+    }
+
     system_prompt = f"""You are an exam question generator for a professor.
 Respond with ONLY valid JSON, no extra text, no markdown fences.
-Every question must include "source_chunk": the number of the chunk
-(shown as [Chunk N] in the material) that the question was based on.
+Every question must include "source_chunk" and "bloom_level" (which
+must be exactly "{bloom_level}").
 {format_instruction}"""
 
     user_prompt = f"""Generate {num_questions} {difficulty}-difficulty
-{question_type} questions based on the numbered course material below.
-Test real understanding, not memorized wording.
+{question_type} questions at Bloom's Taxonomy level "{bloom_level}"
+({bloom_guidance.get(bloom_level, "")}) based on the numbered course
+material below.
 
 Course material:
 {numbered_content}
@@ -81,7 +91,6 @@ Course material:
         print(raw_text)
         return None
 
-    # Attach the actual source metadata (filename/unit) using source_chunk index
     for q in questions:
         chunk_index = q.get("source_chunk")
         if chunk_index is not None and 0 <= chunk_index < len(metadatas):
@@ -111,3 +120,77 @@ if __name__ == "__main__":
             else:
                 print(f"   Model answer: {q['model_answer']}")
             print(f"   📚 Source: {q['source_label']}")
+
+
+def generate_personalized_practice(flagged_students_df, source_name, course=None):
+    """
+    For each struggling student (from Analytics), generates a short,
+    easier-difficulty practice quiz at a foundational Bloom's level —
+    directly targeting the students who need reinforcement most.
+
+    Returns: [{"student_name": ..., "questions": [...]}, ...]
+    """
+    practice_sets = []
+
+    for _, row in flagged_students_df.iterrows():
+        questions = generate_questions(
+            source_name=source_name,
+            course=course,
+            num_questions=3,
+            question_type="MCQ",
+            difficulty="Easy",
+            bloom_level="Remember"
+        )
+
+        practice_sets.append({
+            "student_name": row["student_name"],
+            "questions": questions
+        })
+
+    return practice_sets
+
+def generate_question_paper(
+    source_name=None,
+    course=None,
+    num_mcq=5,
+    num_descriptive=2,
+    marks_per_mcq=2,
+    marks_per_descriptive=5,
+    difficulty="Medium"
+):
+    """
+    Generates a full question paper combining MCQs and descriptive
+    questions, with marks assigned to each, plus a total marks summary —
+    exactly what a professor needs to assemble a real test.
+    """
+    paper = {"mcq_section": [], "descriptive_section": [], "total_marks": 0}
+
+    if num_mcq > 0:
+        mcqs = generate_questions(
+            source_name=source_name,
+            course=course,
+            num_questions=num_mcq,
+            question_type="MCQ",
+            difficulty=difficulty
+        )
+        if mcqs:
+            for q in mcqs:
+                q["marks"] = marks_per_mcq
+            paper["mcq_section"] = mcqs
+            paper["total_marks"] += marks_per_mcq * len(mcqs)
+
+    if num_descriptive > 0:
+        descriptive = generate_questions(
+            source_name=source_name,
+            course=course,
+            num_questions=num_descriptive,
+            question_type="Descriptive",
+            difficulty=difficulty
+        )
+        if descriptive:
+            for q in descriptive:
+                q["marks"] = marks_per_descriptive
+            paper["descriptive_section"] = descriptive
+            paper["total_marks"] += marks_per_descriptive * len(descriptive)
+
+    return paper
