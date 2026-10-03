@@ -1,4 +1,4 @@
-"""Managed PDF lifecycle. SQLite ownership survives failed external cleanup.
+"""Managed academic-file lifecycle. SQLite ownership survives failed external cleanup.
 
 No distributed transaction exists: compensations and partial failures are explicit.
 Legacy vectors/files are never adopted or deleted automatically.
@@ -10,7 +10,10 @@ from datetime import datetime
 from pathlib import Path
 import db
 from chunking import chunk_text
-from content_agent import extract_text_from_pdf
+from content_agent import extract_content
+from config import get_max_upload_bytes, ConfigurationError
+
+EXTENSIONS = ('.pdf', '.png', '.jpg', '.jpeg')
 
 LEVELS = ('course', 'semester', 'subject', 'unit')
 
@@ -36,8 +39,8 @@ def content_hash(data):
 def validate_filename(name):
     if not isinstance(name, str) or not name or name in ('.', '..') or '/' in name or '\\' in name or any(ord(c) < 32 for c in name) or ':' in name:
         raise MaterialError('Use an original filename without paths or control characters.')
-    if Path(name).suffix.lower() != '.pdf':
-        raise MaterialError('Only PDF materials are supported.')
+    if Path(name).suffix.lower() not in EXTENSIONS:
+        raise MaterialError('Supported materials are PDF, PNG, JPG and JPEG.')
     return name
 
 
@@ -60,7 +63,7 @@ def managed_path(record, uploads):
     except (ValueError, KeyError, TypeError) as exc:
         raise MaterialError('Not a managed UUID material.') from exc
     filename = record.get('managed_filename')
-    if filename != identity + '.pdf':
+    if not isinstance(filename, str) or Path(filename).suffix not in EXTENSIONS or filename != identity + Path(filename).suffix:
         raise MaterialError('Unsafe managed filename.')
     root = Path(uploads).resolve()
     candidate = root / filename
@@ -80,11 +83,17 @@ def result(success=False, **fields):
     return dict(success=success, warnings=[], **fields)
 
 
-def upload_material(data, original_filename, hierarchy, *, uploads='uploads', vectors=None, extractor=extract_text_from_pdf):
+def upload_material(data, original_filename, hierarchy, *, uploads='uploads', vectors=None, extractor=None):
     name = validate_filename(original_filename)
     hierarchy = hierarchy_values(hierarchy)
     if not isinstance(data, bytes) or not data:
-        raise MaterialError('Upload must contain nonempty PDF bytes.')
+        raise MaterialError('Upload must contain nonempty file bytes.')
+    try:
+        limit = get_max_upload_bytes()
+    except ConfigurationError as exc:
+        raise MaterialError(str(exc)) from exc
+    if len(data) > limit:
+        raise MaterialError(f'Upload exceeds the {limit / 1024 / 1024:g} MB size limit.')
     digest = content_hash(data)
     try:
         duplicate = db.find_material_hash(digest)
@@ -93,22 +102,23 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
     if duplicate:
         return result(duplicate=True, existing_material=duplicate, error=f"Exact content already registered as {duplicate['original_filename']}.")
     identity = str(uuid.uuid4())
-    record = dict(material_id=identity, original_filename=name, managed_filename=identity+'.pdf', file_hash=digest, **hierarchy, created_at=datetime.now().isoformat())
+    record = dict(material_id=identity, original_filename=name, managed_filename=identity+Path(name).suffix.lower(), file_hash=digest, **hierarchy, created_at=datetime.now().isoformat())
     root = Path(uploads)
     path = managed_path(record, root)
     ids = []; created = False; attempted_vectors = False
     try:
-        vectors = vectors_api(vectors)
         root.mkdir(parents=True, exist_ok=True)
         with path.open('xb') as stream:
             created = True
             stream.write(data)
-        chunks = chunk_text(extractor(path))
+        text = extractor(path) if extractor is not None else extract_content(path)
+        chunks = chunk_text(text)
         if not chunks:
-            raise MaterialError('PDF contains no usable extracted text.')
+            raise MaterialError('Material contains no usable extracted text.')
         ids = [f'{identity}_chunk_{i}' for i in range(len(chunks))]
         record['chunk_ids'] = json.dumps(ids)
         metadata = dict(material_id=identity, source=name, **hierarchy)
+        vectors = vectors_api(vectors)
         if vectors.get_material_chunks(ids)['ids']:
             raise MaterialError('Generated chunk IDs already exist; upload refused.')
         attempted_vectors = True
@@ -117,7 +127,8 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
         if set(stored['ids']) != set(ids):
             raise MaterialError('Vector insertion did not persist every owned chunk.')
         db.register_material(record)
-        return result(True, material=record, vectors_created=len(ids))
+        return result(True, material=record, vectors_created=len(ids),
+                      text_preview=text[:1000] if Path(name).suffix.lower() != '.pdf' else '')
     except Exception as exc:
         warnings = []
         if attempted_vectors:

@@ -42,3 +42,17 @@ def get_ai_config():
     if not math.isfinite(timeout) or timeout <= 0:
         raise ConfigurationError('EDUAGENT_LLM_TIMEOUT_SECONDS must be finite and positive.')
     return AIConfig(provider, model, url, timeout)
+
+
+DEFAULT_MAX_UPLOAD_MB = 20
+
+
+def get_max_upload_bytes():
+    """Independent ingestion limit, read per upload; no LLM configuration needed."""
+    try:
+        mb = float(os.environ.get('EDUAGENT_MAX_UPLOAD_MB', str(DEFAULT_MAX_UPLOAD_MB)))
+    except ValueError as exc:
+        raise ConfigurationError('EDUAGENT_MAX_UPLOAD_MB must be numeric.') from exc
+    if not math.isfinite(mb) or not math.isfinite(mb * 1024 * 1024) or mb <= 0 or mb * 1024 * 1024 < 1:
+        raise ConfigurationError('EDUAGENT_MAX_UPLOAD_MB must be finite and positive (at least one byte).')
+    return int(mb * 1024 * 1024)

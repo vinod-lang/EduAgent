@@ -1,3 +1,5 @@
+from dashboard import get_dashboard_summary, material_type, QUICK_ACTIONS
+from config import get_max_upload_bytes, ConfigurationError
 import streamlit as st
 import os
 from content_agent import extract_text_from_pdf
@@ -37,11 +39,45 @@ st.title("🎓 EduAgent — AI Assistant for Course Material")
 # "agent" gets control based on what the user wants to do.
 page = st.sidebar.radio(
     "Choose an action:",
-    ["Smart Assistant","Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics", "Courses & Activity", "Question Paper"]
+    ["Professor Dashboard","Smart Assistant","Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics", "Courses & Activity", "Question Paper"], key="navigation"
 )
 
 # Make sure a folder exists to temporarily store uploaded files
 os.makedirs("uploads", exist_ok=True)
+
+def navigate_to(page_name):
+    st.session_state['navigation'] = page_name
+
+
+if page == "Professor Dashboard":
+    st.header("Professor Dashboard")
+    overview = get_dashboard_summary()
+    cards = st.columns(3)
+    cards[0].metric("Registered courses", overview['course_count'])
+    cards[1].metric("Managed materials", overview['managed_count'])
+    cards[2].metric("Legacy registered documents", overview['legacy_count'])
+    st.caption("Counts use SQLite records. Legacy records do not verify indexed vectors; unregistered Chroma content is not counted.")
+    st.subheader("Quick actions")
+    for target in QUICK_ACTIONS:
+        st.button(target, on_click=navigate_to, args=(target,))
+    st.subheader("Managed materials by course")
+    if overview['materials_by_course']:
+        for course_name, count in overview['materials_by_course'].items():
+            st.write(f"{course_name}: {count}")
+    else:
+        st.info("No registered courses yet. Upload academic content to get started.")
+    st.subheader("Recently uploaded managed materials")
+    for material in overview['recent_materials']:
+        st.write(material['original_filename'])
+        st.caption(material_type(material) + " · " + " → ".join(material[k] for k in ('course', 'semester', 'subject', 'unit')))
+    if not overview['recent_materials']:
+        st.info("No managed materials yet. Existing legacy records remain available in Courses & Activity.")
+    st.subheader("Recent activity")
+    for activity in overview['recent_activity']:
+        st.write(f"{activity['timestamp']} — {activity['action']}")
+    if not overview['recent_activity']:
+        st.info("No recent activity.")
+
 
 # --- COORDINATOR AGENT (smart routing) ---
 if page == "Smart Assistant":
@@ -125,25 +161,36 @@ if page == "Smart Assistant":
 # --- PAGE 1: CONTENT AGENT ---
 if page == "Upload Content":
     st.header("📄 Content Agent")
-    st.write("Upload a PDF to add it to the searchable course material.")
+    st.write("Upload PDF, PNG, JPG or JPEG academic content. Images use local Tesseract OCR.")
 
     course = st.text_input("Course name:", value="B.Tech CSE")
     semester = st.text_input("Semester:", value="Semester 5")
     subject = st.text_input("Subject:", value="Machine Learning")
     unit = st.text_input("Unit:", value="Unit 1")
-    uploaded_file = st.file_uploader("Choose a PDF", type="pdf")
+    uploaded_file = st.file_uploader("Choose a PDF or image", type=["pdf", "png", "jpg", "jpeg"])
+    try:
+        upload_limit = get_max_upload_bytes()
+        st.caption(f"Maximum upload size: {upload_limit / 1024 / 1024:g} MB")
+    except ConfigurationError as exc:
+        st.error(str(exc))
+        st.stop()
 
     if st.button("Add to Database"):
         if uploaded_file is None:
-            st.warning("Choose a PDF first.")
+            st.warning("Choose a PDF or image first.")
         else:
             try:
-                with st.spinner("Processing PDF and storing chunks..."):
+                if uploaded_file.size > upload_limit:
+                    raise MaterialError("Upload exceeds the configured size limit.")
+                with st.spinner("Extracting content and storing chunks..."):
                     outcome = upload_material(uploaded_file.getvalue(), uploaded_file.name,
                         dict(course=course, semester=semester, subject=subject, unit=unit))
                 if outcome["success"]:
                     material = outcome["material"]
                     st.success(f"Indexed {material['original_filename']} — " + " → ".join(material[k] for k in ('course','semester','subject','unit')))
+                    if outcome.get("text_preview"):
+                        st.caption("Extracted OCR text preview (up to 1,000 characters)")
+                        st.text(outcome["text_preview"])
                 else:
                     st.warning(outcome["error"])
                 for warning in outcome.get("warnings", []):
@@ -360,6 +407,7 @@ elif page == "Courses & Activity":
             identity = material['material_id']
             st.caption(f"Uploaded: {material['created_at'][:16]}")
             st.write(f"📄 **{material['original_filename']}** — " + " → ".join(material[k] for k in ('course','semester','subject','unit')))
+            st.caption(material_type(material))
             with st.expander(f"Manage {material['original_filename']} ({identity[:8]})"):
                 values = {k: st.text_input(k.capitalize(), value=material[k], key=f"hierarchy_{identity}_{k}") for k in ('course','semester','subject','unit')}
                 if st.button("Save hierarchy", key=f"edit_{identity}"):

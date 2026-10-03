@@ -37,3 +37,45 @@ or invalid settings fail clearly; no .env file or API key is needed.
 For future testing, set `EDUAGENT_LLM_MODEL` to an already-installed model or
 pass `model=` to `generate_chat`; per-call overrides do not alter the default.
 Embeddings remain separate and unchanged.
+
+
+## Build 5: professor overview and local image OCR
+
+Professor Dashboard is the default page. Counts come from SQLite courses and
+managed materials; legacy registered documents are shown separately and are not
+claimed to be a verified count of indexed content. Recent activity shows known
+action labels and parsed timestamps, never raw details or uploaded text.
+
+Upload Content accepts PDF, PNG, JPG and JPEG (case-insensitive). PDFs retain
+existing text/page extraction; scanned/image-only PDFs are not OCR'd in this build.
+Images are decoded/validated with Pillow and OCR'd locally via pytesseract.
+Tesseract must already be installed/configured on PATH; an absent engine produces
+a controlled upload failure and does not prevent PDF use or startup.
+Python dependencies are pinned in requirements.txt. No cloud OCR or LLM correction
+is used. OCR has a 30-second timeout and preserves useful lines/Unicode while
+collapsing excessive whitespace. Check the bounded 1,000-character preview for
+recognition errors; no accuracy guarantee or mandatory approval is implied.
+
+The default per-upload limit is 20 MiB. Set EDUAGENT_MAX_UPLOAD_MB to a finite,
+positive value (MiB, at least one byte) to override it independently of AI settings.
+UI checks uploaded size before copying bytes, and the service rechecks before
+hashing, extraction or indexing. Streamlit's own incoming-upload/server limit
+still applies; this application limit does not control HTTP upload buffering.
+Pillow decompression-bomb warnings/errors are rejected rather than ignored.
+
+All formats use the same UUID/hash/exact-chunk ownership service, hierarchy and
+course_material collection. Managed filenames use the UUID plus validated lower-
+case extension. Existing PDF/legacy records are unchanged; no schema migration
+or vector rewrite is needed. Identical bytes are duplicates even with new names;
+different bytes remain independent even when OCR text matches.
+
+Normal OCR tests mock the engine and isolate SQLite/uploads/vector boundaries.
+Dashboard/page tests use temporary storage and mock generation. Run:
+
+```sh
+.venv-rebuild/bin/python -m pytest -p no:cacheprovider
+.venv-rebuild/bin/python -m pip check
+```
+
+Optional live OCR checks must use temporary synthetic images and temporary storage,
+never original runtime data. No live LLM call is required for this build.

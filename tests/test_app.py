@@ -13,9 +13,9 @@ def app(agents,monkeypatch,tmp_path):
     for module in agents.values():
         if hasattr(module,"ai_provider"):
             monkeypatch.setattr(module.ai_provider,"generate_chat",Mock(side_effect=AssertionError("No live generation in tests")))
-    return AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"),default_timeout=20).run()
+    return AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"),default_timeout=20).run().sidebar.radio[0].set_value("Smart Assistant").run()
 
-@pytest.mark.parametrize("page", ["Smart Assistant","Upload Content","Ask a Question","Generate Quiz","Draft Document","Analytics","Courses & Activity","Question Paper"])
+@pytest.mark.parametrize("page", ["Professor Dashboard","Smart Assistant","Upload Content","Ask a Question","Generate Quiz","Draft Document","Analytics","Courses & Activity","Question Paper"])
 def test_pages_with_document(app,page):
     app.session_state["document"]="Synthetic draft"
     app.sidebar.radio[0].set_value(page).run()
