@@ -1,0 +1,50 @@
+import io
+from pathlib import Path
+from unittest.mock import Mock
+import pytest
+from streamlit.testing.v1 import AppTest
+import db
+import export_utils
+
+@pytest.fixture
+def app(agents,monkeypatch,tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(db,"DB_PATH",str(tmp_path/"app.db"))
+    for module in agents.values():
+        if hasattr(module,"ollama"):
+            monkeypatch.setattr(module.ollama,"chat",Mock(side_effect=AssertionError("No live generation in tests")))
+    return AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"),default_timeout=20).run()
+
+@pytest.mark.parametrize("page", ["Smart Assistant","Upload Content","Ask a Question","Generate Quiz","Draft Document","Analytics","Courses & Activity","Question Paper"])
+def test_pages_with_document(app,page):
+    app.session_state["document"]="Synthetic draft"
+    app.sidebar.radio[0].set_value(page).run()
+    assert not app.exception
+
+def test_manual_edit_export(app,monkeypatch):
+    original=export_utils.generate_docx_bytes
+    spy=Mock(side_effect=original);monkeypatch.setattr(export_utils,"generate_docx_bytes",spy)
+    app.session_state["document"]="Synthetic old draft"
+    app.sidebar.radio[0].set_value("Draft Document").run()
+    editor=next(area for area in app.text_area if area.label=="Result:")
+    editor.set_value("Synthetic edited draft").run()
+    assert not app.exception
+    assert app.session_state["document"]=="Synthetic edited draft"
+    spy.assert_called_with("Synthetic edited draft")
+
+@pytest.mark.parametrize("intent", ["question","quiz","document","quiz_and_notice"])
+def test_dispatch(app,agents,monkeypatch,mcq,intent):
+    monkeypatch.setattr(agents["coordinator"],"classify_intent",Mock(return_value=intent))
+    qa=Mock(return_value=("Synthetic answer",["Synthetic source"]))
+    quiz=Mock(return_value=[dict(mcq,source_label="Synthetic source")])
+    doc=Mock(return_value="Synthetic notice")
+    monkeypatch.setattr(agents["student_support_agent"],"answer_question",qa)
+    monkeypatch.setattr(agents["assessment_agent"],"generate_questions",quiz)
+    monkeypatch.setattr(agents["document_agent"],"generate_document",doc)
+    app.text_area[0].set_value("Synthetic request")
+    next(button for button in app.button if button.label=="Submit").click().run()
+    assert not app.exception
+    assert qa.called==(intent=="question")
+    assert quiz.called==(intent in ["quiz","quiz_and_notice"])
+    assert doc.called==(intent in ["document","quiz_and_notice"])
+    if quiz.called:quiz.assert_called_once_with(source_name="PCA",num_questions=5)

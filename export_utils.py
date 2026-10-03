@@ -26,6 +26,12 @@ def sanitize_text(text):
     return text.encode("latin-1", errors="ignore").decode("latin-1")
 
 
+def safe_multicell(pdf, height, text):
+    # multi_cell can leave x at the right edge; reset it before every paragraph.
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(0, height, sanitize_text(text))
+
+
 def generate_docx_bytes(text):
     """
     Converts plain text (like a generated notice) into a real .docx
@@ -51,14 +57,14 @@ def generate_quiz_pdf_bytes(questions, title="Quiz"):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, title, ln=True)
+    pdf.cell(0, 10, sanitize_text(title), ln=True)
     pdf.set_font("Helvetica", size=12)
 
     for i, q in enumerate(questions, start=1):
-        pdf.multi_cell(0, 8, f"Q{i}. {q['question']}")
+        safe_multicell(pdf, 8, f"Q{i}. {q['question']}")
         if "options" in q:
             for letter, opt in q["options"].items():
-                pdf.multi_cell(0, 8, f"   {letter}) {opt}")
+                safe_multicell(pdf, 8, f"   {letter}) {opt}")
         pdf.ln(2)
 
     # Answer key on a fresh page, separated from the questions
@@ -69,9 +75,9 @@ def generate_quiz_pdf_bytes(questions, title="Quiz"):
 
     for i, q in enumerate(questions, start=1):
         if "correct_answer" in q:
-            pdf.multi_cell(0, 8, f"Q{i}: {q['correct_answer']} - {q.get('explanation', '')}")
+            safe_multicell(pdf, 8, f"Q{i}: {q['correct_answer']} - {q.get('explanation', '')}")
         else:
-            pdf.multi_cell(0, 8, f"Q{i}: {q.get('model_answer', '')}")
+            safe_multicell(pdf, 8, f"Q{i}: {q.get('model_answer', '')}")
 
     pdf_bytes = bytes(pdf.output())
     return io.BytesIO(pdf_bytes)
@@ -84,7 +90,7 @@ def generate_question_paper_pdf_bytes(paper, title="Question Paper"):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, title, ln=True)
+    pdf.cell(0, 10, sanitize_text(title), ln=True)
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 10, f"Total Marks: {paper['total_marks']}", ln=True)
     pdf.ln(3)
@@ -95,9 +101,9 @@ def generate_question_paper_pdf_bytes(paper, title="Question Paper"):
         pdf.cell(0, 10, "Section A: Multiple Choice Questions", ln=True)
         pdf.set_font("Helvetica", size=12)
         for i, q in enumerate(paper["mcq_section"], start=1):
-            pdf.multi_cell(0, 8, f"Q{i}. [{q['marks']} marks] {q['question']}")
+            safe_multicell(pdf, 8, f"Q{i}. [{q['marks']} marks] {q['question']}")
             for letter, opt in q["options"].items():
-                pdf.multi_cell(0, 8, f"   {letter}) {opt}")
+                safe_multicell(pdf, 8, f"   {letter}) {opt}")
             pdf.ln(1)
 
     # Section B: Descriptive
@@ -106,7 +112,7 @@ def generate_question_paper_pdf_bytes(paper, title="Question Paper"):
         pdf.cell(0, 10, "Section B: Descriptive Questions", ln=True)
         pdf.set_font("Helvetica", size=12)
         for i, q in enumerate(paper["descriptive_section"], start=1):
-            pdf.multi_cell(0, 8, f"Q{i}. [{q['marks']} marks] {q['question']}")
+            safe_multicell(pdf, 8, f"Q{i}. [{q['marks']} marks] {q['question']}")
             pdf.ln(1)
 
     # Answer key on separate pages
@@ -118,12 +124,12 @@ def generate_question_paper_pdf_bytes(paper, title="Question Paper"):
     if paper["mcq_section"]:
         pdf.cell(0, 10, "Section A", ln=True)
         for i, q in enumerate(paper["mcq_section"], start=1):
-            pdf.multi_cell(0, 8, f"Q{i}: {q['correct_answer']} - {q.get('explanation', '')}")
+            safe_multicell(pdf, 8, f"Q{i}: {q['correct_answer']} - {q.get('explanation', '')}")
 
     if paper["descriptive_section"]:
         pdf.cell(0, 10, "Section B", ln=True)
         for i, q in enumerate(paper["descriptive_section"], start=1):
-            pdf.multi_cell(0, 8, f"Q{i}: {q.get('model_answer', '')}")
+            safe_multicell(pdf, 8, f"Q{i}: {q.get('model_answer', '')}")
 
     pdf_bytes = bytes(pdf.output())
     return io.BytesIO(pdf_bytes)

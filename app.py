@@ -240,19 +240,21 @@ elif page == "Draft Document":
             with st.spinner("Drafting document..."):
                 document = generate_document(template_name, field_values)
             st.session_state["document"] = document
+            st.session_state["document_template"] = template_name
+            st.session_state.pop("document_editor", None)
             log_activity("generate_document", f"{template_name} document generated")
 
-if "document" in st.session_state:
-    st.subheader("Generated Document (review before sending)")
-    st.text_area("Result:", value=st.session_state["document"], height=300)
+    if "document" in st.session_state:
+        st.subheader("Generated Document (review before sending)")
+        st.session_state["document"] = st.text_area("Result:", value=st.session_state["document"], height=300, key="document_editor")
 
-    docx_buffer = generate_docx_bytes(st.session_state["document"])
-    st.download_button(
-        label="📥 Download as Word Document (.docx)",
-        data=docx_buffer,
-        file_name=f"{template_name.replace(' ', '_')}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
+        docx_buffer = generate_docx_bytes(st.session_state["document"])
+        st.download_button(
+            label="📥 Download as Word Document (.docx)",
+            data=docx_buffer,
+            file_name=f"{st.session_state.get('document_template', 'Document').replace(' ', '_')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
 
 # --- PAGE 5: ANALYTICS AGENT ---
 elif page == "Analytics":

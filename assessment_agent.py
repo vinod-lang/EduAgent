@@ -91,11 +91,29 @@ Course material:
         print(raw_text)
         return None
 
+    # Minimal contract guard; full question validation belongs to a later build.
+    if not isinstance(questions, list) or len(questions) != num_questions:
+        print("Invalid question response: expected the requested number of questions.")
+        return None
     for q in questions:
+        if not isinstance(q, dict) or not isinstance(q.get("question"), str) or not q["question"].strip():
+            print("Invalid question response: missing question text.")
+            return None
+        if question_type == "MCQ":
+            options = q.get("options")
+            if not isinstance(options, dict) or set(options) != {"A", "B", "C", "D"} or any(not isinstance(v, str) or not v.strip() for v in options.values()) or not isinstance(q.get("correct_answer"), str) or q["correct_answer"] not in options:
+                print("Invalid question response: malformed MCQ options or answer.")
+                return None
+        elif not isinstance(q.get("model_answer"), str) or not q["model_answer"].strip():
+            print("Invalid question response: missing model answer.")
+            return None
         chunk_index = q.get("source_chunk")
-        if chunk_index is not None and 0 <= chunk_index < len(metadatas):
-            meta = metadatas[chunk_index]
-            q["source_label"] = f"{meta['source']} ({meta['unit']})"
+        if chunk_index is not None and (type(chunk_index) is not int or not 0 <= chunk_index < len(metadatas)):
+            print("Invalid question response: invalid source_chunk index.")
+            return None
+        if chunk_index is not None:
+            meta = metadatas[chunk_index] or {}
+            q["source_label"] = f"{meta.get('source', 'Unknown')} ({meta.get('unit', 'Unassigned')})"
         else:
             q["source_label"] = "Unknown"
 

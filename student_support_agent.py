@@ -42,7 +42,7 @@ Student's question: {question}"""
     answer = response["message"]["content"]
 
     # Build a simple list of unique sources used, for citation display
-    sources = list({f"{m['source']} ({m['unit']})" for m in retrieved_metadata})
+    sources = sorted({f"{(m or {}).get('source', 'Unknown')} ({(m or {}).get('unit', 'Unassigned')})" for m in retrieved_metadata})
 
     return answer, sources
 

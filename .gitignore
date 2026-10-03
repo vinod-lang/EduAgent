@@ -44,3 +44,6 @@ eduagent.db
 # Logs and temporary files
 *.log
 *.tmp
+
+# Separate rebuild environment; preserve the original venv
+.venv-rebuild/
