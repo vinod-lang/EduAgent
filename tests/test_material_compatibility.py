@@ -26,13 +26,16 @@ def test_vector_exact_apis():
     names={'get_all_chunks','add_material_chunks','get_material_chunks','delete_material_chunks','update_material_chunks'}
     module=ast.Module(body=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in names],type_ignores=[])
     collection=Mock();collection.get.return_value={'documents':['synthetic'],'metadatas':[{'source':'PCA'}]}
-    env={'collection':collection};exec(compile(module,'vector_store.py','exec'),env)
+    from retrieval import build_filter
+    env={'collection':collection, 'build_filter':build_filter};exec(compile(module,'vector_store.py','exec'),env)
     env['get_all_chunks']('PCA','C')
-    assert collection.get.call_args.kwargs['where']=={'$and':[{'source':'PCA'},{'course':'C'}]}
+    assert collection.get.call_args.kwargs['where']=={'$and':[{'course':'C'},{'source':'PCA'}]}
     env['add_material_chunks'](['uuid_chunk_0'],['text'],{'material_id':'uuid'})
     collection.add.assert_called_once_with(ids=['uuid_chunk_0'],documents=['text'],metadatas=[{'material_id':'uuid'}])
     env['delete_material_chunks'](['uuid_chunk_0']);collection.delete.assert_called_once_with(ids=['uuid_chunk_0'])
     env['update_material_chunks'](['uuid_chunk_0'],[{'unit':'U'}]);collection.update.assert_called_once_with(ids=['uuid_chunk_0'],metadatas=[{'unit':'U'}])
+    env['get_all_chunks']('', '')
+    assert collection.get.call_args.kwargs == {'limit':15}
 
 
 def test_management_ui(storage,hierarchy,agents,monkeypatch,tmp_path):

@@ -79,3 +79,68 @@ Dashboard/page tests use temporary storage and mock generation. Run:
 
 Optional live OCR checks must use temporary synthetic images and temporary storage,
 never original runtime data. No live LLM call is required for this build.
+
+
+## Build 6: hierarchy-aware evidence retrieval
+
+Q&A uses retrieval.retrieve_evidence → metadata-grounded context → the unchanged
+AI provider. QAResult carries answer, sources and RetrievalResult; tuple unpacking
+and indexing still expose (answer, source labels) for existing callers.
+The basic search_database and get_all_chunks APIs remain for compatibility;
+assessment retains its existing generation workflow, using the shared filter builder.
+
+Exact optional filters: course, semester, subject, unit, material_id. Material
+selection uses the registered UUID, never filename guessing. The shared builder
+also supports source for the existing assessment API. Multiple filters use $and.
+Ask a Question offers SQLite-backed cascading controls and an All/no-filter option
+at every level. Legacy content lacking deeper metadata remains broadly/course-
+searchable; exact deeper/material filters naturally exclude incompatible records.
+No production vectors are migrated, and no missing academic hierarchy is invented.
+
+The current course_material collection was inspected read-only and via a temporary
+copy: its HNSW space is cosine (not assumed L2). Chroma returns cosine distance,
+1 minus cosine similarity, where lower is nearer. RAG v2 refuses unknown/non-cosine
+collections rather than applying an incompatible cutoff or altering an index.
+Tiny negative floating-point roundoff is clamped to zero; invalid distance results
+are rejected. Missing distances/IDs or mismatched response lists fail closed.
+
+Independent retrieval settings, read per request:
+
+- EDUAGENT_RAG_CANDIDATE_K: 15 by default.
+- EDUAGENT_RAG_FINAL_K: 5 by default.
+- EDUAGENT_RAG_MAX_DISTANCE: 0.65 by default, inclusive cosine-distance cutoff.
+
+Counts must be integers in 1–200, with candidate_k >= final_k. Distance must be
+finite and within 0–2. Explicit retrieve_evidence overrides take precedence.
+The initial cutoff retained PCA evidence (observed best distance ~0.31) and rejected
+a baking query (~0.92 best) in the temporary baseline copy. This is an initial
+operational policy, not calibrated confidence or a semantic relevance guarantee.
+These four baseline examples do not establish broad quality improvement.
+
+Candidates are stably ordered by distance, then deduplicated by exact ID and
+NFC/whitespace-normalized text before relevance filtering and final selection.
+Case and academic symbols remain significant. Aggressive fuzzy/overlap suppression
+is deliberately deferred to avoid dropping distinct facts; no reranker is added.
+No surviving evidence means no generative provider call. Empty collections/scopes
+are normal no-evidence states; retrieval/configuration failures surface controlled
+errors rather than being presented as a successful answer.
+
+Sources are generated solely from evidence metadata, deduplicated per material /
+hierarchy / known page. Original source labels are shown, not managed UUID filenames.
+Only a positive integer page in metadata can create a page label; text markers and
+model-written citations are never parsed as provenance. Image/OCR sources are
+page-less. Existing PDF chunks do not store reliable per-chunk pages and remain
+page-less until a future ingestion/migration task. Sources identify retrieved
+context, not a verified claim-by-claim citation audit of the model's answer.
+
+Development diagnostics show candidate counts, invalid results, duplicates,
+relevance rejections, final evidence count, active filters, metric and cutoff.
+They contain no chunk text or question and are not persisted. The existing LLM,
+embedding model, OCR/identity/deletion and analytics implementations remain intact.
+Tests isolate storage and mock provider/collection boundaries; optional comparisons
+use only copied Chroma storage and cached embeddings in offline mode.
+
+Material choices include upload timestamps so same-name materials in the same
+hierarchy can be selected separately using UUID-backed values. Identical human
+source labels are rendered once; distinct material IDs remain in structured
+provenance for inspection.

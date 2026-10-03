@@ -102,20 +102,23 @@ def test_ocr_retrieval_qa_and_assessment(storage, hierarchy, monkeypatch, agents
     monkeypatch.setattr(pytesseract, 'image_to_string', Mock(return_value='PCA preserves variance in fewer dimensions.'))
     material = ingest(storage, hierarchy)['material']
     class Collection:
+        configuration = {'hnsw': {'space': 'cosine'}}
+        def count(self): return len(storage[1].rows)
         def matching(self, where):
             clauses = where.get('$and', [where]) if where else []
             return [r for r in storage[1].rows.values() if all(all(r['metadata'].get(k) == v for k, v in clause.items()) for clause in clauses)]
-        def query(self, query_texts, n_results, where):
+        def query(self, query_texts, n_results, where, include=None):
             rows = self.matching(where)[:n_results]
-            return {'documents': [[r['document'] for r in rows]], 'metadatas': [[r['metadata'] for r in rows]]}
+            return {'ids': [[f'synthetic_{i}' for i in range(len(rows))]], 'distances': [[0.2] * len(rows)], 'documents': [[r['document'] for r in rows]], 'metadatas': [[r['metadata'] for r in rows]]}
         def get(self, where=None, limit=15):
             rows = self.matching(where)[:limit]
             return {'documents': [r['document'] for r in rows], 'metadatas': [r['metadata'] for r in rows]}
     tree = ast.parse((Path(__file__).resolve().parents[1]/'vector_store.py').read_text())
     module = ast.Module(body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in ('search_database', 'get_all_chunks')], type_ignores=[])
-    env = {'collection': Collection()}; exec(compile(module, 'vector_store.py', 'exec'), env)
+    from retrieval import build_filter
+    env = {'collection': Collection(), 'build_filter':build_filter}; exec(compile(module, 'vector_store.py', 'exec'), env)
     qa = agents['student_support_agent']; assessment = agents['assessment_agent']
-    monkeypatch.setattr(qa, 'search_database', env['search_database'])
+    monkeypatch.setattr(agents['vectors'], 'collection', env['collection'])
     monkeypatch.setattr(assessment, 'get_all_chunks', env['get_all_chunks'])
     assert env['search_database']('PCA', course='Other Course')['documents'] == [[]]
     provider = Mock(return_value='PCA preserves variance.'); monkeypatch.setattr(qa.ai_provider, 'generate_chat', provider)

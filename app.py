@@ -1,3 +1,5 @@
+from retrieval import RetrievalError
+from rag_ui import available_courses, scope_options
 from dashboard import get_dashboard_summary, material_type, QUICK_ACTIONS
 from config import get_max_upload_bytes, ConfigurationError
 import streamlit as st
@@ -22,7 +24,7 @@ from ai_provider import AIProviderError
 def call_ai(function, *args, **kwargs):
     try:
         return function(*args, **kwargs)
-    except AIProviderError as exc:
+    except (AIProviderError, RetrievalError) as exc:
         st.error(str(exc))
         st.stop()
 
@@ -204,20 +206,43 @@ elif page == "Ask a Question":
     st.header("💬 Student Support Agent")
     st.write("Ask a question based on the uploaded course material.")
 
-    course_filter = st.text_input("Limit search to course (optional):", value="")
+    materials = list_materials()
+    scope = {}
+    selected_course = st.selectbox("Course scope:", [None] + available_courses(materials),
+                                   format_func=lambda value: "All courses" if value is None else value)
+    if selected_course is not None:
+        scope['course'] = selected_course
+    for level in ('semester', 'subject', 'unit'):
+        choices = scope_options(materials, scope, level)
+        selected = st.selectbox(level.capitalize() + " scope:", [None] + choices,
+                                format_func=lambda value: "All / no filter" if value is None else value)
+        if selected is not None:
+            scope[level] = selected
+    material_choices = scope_options(materials, scope, 'material_id')
+    selected_material = st.selectbox("Material scope:", [None] + list(material_choices),
+        format_func=lambda value: "All matching materials" if value is None else material_choices[value])
+    if selected_material is not None:
+        scope['material_id'] = selected_material
+    st.caption("Legacy content remains searchable broadly or by course. Deeper filters require stored metadata and exclude incompatible legacy chunks.")
     question = st.text_input("Your question:")
 
     if st.button("Ask"):
         if question.strip() == "":
             st.warning("Please type a question first.")
         else:
-            with st.spinner("Thinking..."):
-                course_arg = course_filter if course_filter.strip() else None
-                answer, sources = call_ai(answer_question, question, course=course_arg)
-            st.markdown("**Answer:**")
-            st.write(answer)
-            if sources:
-                st.caption(f"📚 Source: {', '.join(sources)}")
+            with st.spinner("Retrieving evidence and answering..."):
+                result = call_ai(answer_question, question, filters=scope)
+            if result.retrieval_status == 'no_evidence':
+                st.info(result.answer)
+            else:
+                st.markdown("**Answer:**")
+                st.write(result.answer)
+            if result.sources:
+                st.markdown("**Retrieved evidence sources:**")
+                for source in result.sources:
+                    st.caption(source)
+            with st.expander("Development: retrieval diagnostics"):
+                st.json(result.retrieval.diagnostics.to_dict())
 
 
 # --- PAGE 3: ASSESSMENT AGENT ---

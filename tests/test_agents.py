@@ -11,7 +11,7 @@ def test_qa(agents,monkeypatch):
     module=agents["student_support_agent"]
     chat=response(monkeypatch,module,"Synthetic answer")
     answer,sources=module.answer_question("PCA?",n_chunks=4,course="Synthetic Course")
-    agents["vectors"].search_database.assert_called_once_with("PCA?",n_results=4,course="Synthetic Course")
+    agents["vectors"].search_database.assert_called_once_with("PCA?",n_results=15,course="Synthetic Course")
     assert answer=="Synthetic answer" and sources==["PCA (Unit 1)"]
     assert "Synthetic PCA context" in chat.call_args.kwargs["messages"][1]["content"]
 
