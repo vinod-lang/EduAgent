@@ -14,6 +14,17 @@ from db import list_materials, legacy_materials, init_db, add_course_if_new, get
 from assessment_agent import generate_questions, generate_personalized_practice
 from assessment_agent import generate_questions, generate_personalized_practice, generate_question_paper
 
+from ai_provider import AIProviderError
+
+
+def call_ai(function, *args, **kwargs):
+    try:
+        return function(*args, **kwargs)
+    except AIProviderError as exc:
+        st.error(str(exc))
+        st.stop()
+
+
 init_db()  # creates tables if they don't exist yet — safe to call every run
 
 
@@ -47,20 +58,20 @@ if page == "Smart Assistant":
             st.warning("Please type a request.")
         else:
             with st.spinner("Deciding which agent(s) should handle this..."):
-                intent = classify_intent(user_input)
+                intent = call_ai(classify_intent, user_input)
 
             st.caption(f"🔀 Routed to: **{intent}**")
 
             if intent == "question":
                 with st.spinner("Thinking..."):
-                    answer, sources = answer_question(user_input)
+                    answer, sources = call_ai(answer_question, user_input)
                 st.write(answer)
                 if sources:
                     st.caption(f"📚 Source: {', '.join(sources)}")
 
             elif intent == "quiz":
                 with st.spinner("Generating quiz..."):
-                    questions = generate_questions(source_name="PCA", num_questions=5)
+                    questions = call_ai(generate_questions, source_name="PCA", num_questions=5)
                 if questions:
                     for i, q in enumerate(questions, start=1):
                         st.markdown(f"**Q{i}. {q['question']}**")
@@ -72,7 +83,7 @@ if page == "Smart Assistant":
 
             elif intent == "document":
                 with st.spinner("Drafting document..."):
-                    doc = generate_document("Notice", {
+                    doc = call_ai(generate_document, "Notice", {
                         "course": "General", "subject": user_input,
                         "details": user_input, "date": "TBD"
                     })
@@ -81,11 +92,11 @@ if page == "Smart Assistant":
             elif intent == "quiz_and_notice":
                 # STEP 1: Assessment Agent runs first
                 with st.spinner("Step 1/2 — Generating quiz..."):
-                    questions = generate_questions(source_name="PCA", num_questions=5)
+                    questions = call_ai(generate_questions, source_name="PCA", num_questions=5)
 
                 # STEP 2: Document Agent runs next, referencing the quiz
                 with st.spinner("Step 2/2 — Drafting announcement notice..."):
-                    doc = generate_document("Notice", {
+                    doc = call_ai(generate_document, "Notice", {
                         "course": "General",
                         "subject": "Upcoming Test",
                         "details": user_input,
@@ -155,7 +166,7 @@ elif page == "Ask a Question":
         else:
             with st.spinner("Thinking..."):
                 course_arg = course_filter if course_filter.strip() else None
-                answer, sources = answer_question(question, course=course_arg)
+                answer, sources = call_ai(answer_question, question, course=course_arg)
             st.markdown("**Answer:**")
             st.write(answer)
             if sources:
@@ -176,7 +187,7 @@ elif page == "Generate Quiz":
     if st.button("Generate Questions"):
         with st.spinner("Generating questions... this can take a minute on a local model"):
             course_arg = course_filter if course_filter.strip() else None
-            questions = generate_questions(
+            questions = call_ai(generate_questions,
                 source_name=source_name,
                 course=course_arg,
                 num_questions=num_questions,
@@ -239,7 +250,7 @@ elif page == "Draft Document":
             st.warning(f"Please fill in: {', '.join(missing)}")
         else:
             with st.spinner("Drafting document..."):
-                document = generate_document(template_name, field_values)
+                document = call_ai(generate_document, template_name, field_values)
             st.session_state["document"] = document
             st.session_state["document_template"] = template_name
             st.session_state.pop("document_editor", None)
@@ -304,7 +315,7 @@ elif page == "Analytics":
                 st.session_state['analytics_signature'] = signature
             if not warning_students.empty:
                 if st.button("Generate Warning Letters for Attendance Concerns"):
-                    letters = generate_batch_attendance_warnings(warning_students, course_name=course_name_input, required_percent=str(attendance_limit))
+                    letters = call_ai(generate_batch_attendance_warnings, warning_students, course_name=course_name_input, required_percent=str(attendance_limit))
                     st.session_state['batch_letters'] = letters
                     log_activity('batch_warnings', 'Attendance warning batch generated')
             else:
@@ -316,7 +327,7 @@ elif page == "Analytics":
             if not practice_students.empty:
                 practice_source = st.text_input("Source material to draw from:", value="PCA", key="practice_source")
                 if st.button("Generate Personalized Practice Quizzes"):
-                    st.session_state['practice_sets'] = generate_personalized_practice(practice_students, source_name=practice_source)
+                    st.session_state['practice_sets'] = call_ai(generate_personalized_practice, practice_students, source_name=practice_source)
                     log_activity('personalized_practice', 'Practice batch generated')
             for pos, item in enumerate(st.session_state.get('practice_sets', [])):
                 with st.expander(f"Practice quiz for {item['student_name']} ({pos+1})"):
@@ -407,7 +418,7 @@ elif page == "Question Paper":
     if st.button("Generate Question Paper"):
         with st.spinner("Assembling question paper..."):
             course_arg = course_filter if course_filter.strip() else None
-            paper = generate_question_paper(
+            paper = call_ai(generate_question_paper,
                 source_name=source_name,
                 course=course_arg,
                 num_mcq=num_mcq,

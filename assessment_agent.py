@@ -1,8 +1,7 @@
-import ollama
+import ai_provider
 import json
 from vector_store import get_all_chunks
 
-MODEL_NAME = "llama3.2:3b"
 
 
 def generate_questions(
@@ -73,15 +72,14 @@ Course material:
 {numbered_content}
 """
 
-    response = ollama.chat(
-        model=MODEL_NAME,
+    response = ai_provider.generate_chat(
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
     )
 
-    raw_text = response["message"]["content"]
+    raw_text = response
     cleaned = raw_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
     try:

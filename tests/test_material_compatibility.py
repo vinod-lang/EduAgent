@@ -13,9 +13,9 @@ def test_agents_metadata(agents,monkeypatch,mcq,metadata):
     vectors=agents['vectors']
     vectors.search_database.return_value={'documents':[['Synthetic PCA']], 'metadatas':[[metadata]]}
     vectors.get_all_chunks.return_value=(['Synthetic PCA'],[metadata])
-    monkeypatch.setattr(agents['student_support_agent'].ollama,'chat',Mock(return_value={'message':{'content':'Synthetic answer'}}))
+    monkeypatch.setattr(agents['student_support_agent'].ai_provider,'generate_chat',Mock(return_value='Synthetic answer'))
     assert metadata['source'] in agents['student_support_agent'].answer_question('Question',course='C')[1][0]
-    monkeypatch.setattr(agents['assessment_agent'].ollama,'chat',Mock(return_value={'message':{'content':json.dumps([mcq])}}))
+    monkeypatch.setattr(agents['assessment_agent'].ai_provider,'generate_chat',Mock(return_value=json.dumps([mcq])))
     assert metadata['source'] in agents['assessment_agent'].generate_questions(source_name=metadata['source'],course='C',num_questions=1)[0]['source_label']
     vectors.get_all_chunks.assert_called_once_with(source_name=metadata['source'],course='C')
 

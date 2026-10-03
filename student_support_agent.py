@@ -1,8 +1,6 @@
-import ollama
+import ai_provider
 from vector_store import search_database
 
-# Change this to whichever model you pulled
-MODEL_NAME = "llama3.2:3b"   # or "llama3.1:8b" if you have more RAM
 
 
 def answer_question(question, n_chunks=3, course=None):
@@ -31,15 +29,14 @@ do not make up an answer."""
 
 Student's question: {question}"""
 
-    response = ollama.chat(
-        model=MODEL_NAME,
+    response = ai_provider.generate_chat(
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
     )
 
-    answer = response["message"]["content"]
+    answer = response
 
     # Build a simple list of unique sources used, for citation display
     sources = sorted({f"{(m or {}).get('source', 'Unknown')} ({(m or {}).get('unit', 'Unassigned')})" for m in retrieved_metadata})

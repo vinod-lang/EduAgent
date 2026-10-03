@@ -11,8 +11,8 @@ def app(agents,monkeypatch,tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(db,"DB_PATH",str(tmp_path/"app.db"))
     for module in agents.values():
-        if hasattr(module,"ollama"):
-            monkeypatch.setattr(module.ollama,"chat",Mock(side_effect=AssertionError("No live generation in tests")))
+        if hasattr(module,"ai_provider"):
+            monkeypatch.setattr(module.ai_provider,"generate_chat",Mock(side_effect=AssertionError("No live generation in tests")))
     return AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"),default_timeout=20).run()
 
 @pytest.mark.parametrize("page", ["Smart Assistant","Upload Content","Ask a Question","Generate Quiz","Draft Document","Analytics","Courses & Activity","Question Paper"])
@@ -48,3 +48,12 @@ def test_dispatch(app,agents,monkeypatch,mcq,intent):
     assert quiz.called==(intent in ["quiz","quiz_and_notice"])
     assert doc.called==(intent in ["document","quiz_and_notice"])
     if quiz.called:quiz.assert_called_once_with(source_name="PCA",num_questions=5)
+
+
+def test_controlled_provider_failure(app,agents,monkeypatch):
+    from ai_provider import AIConnectionError
+    monkeypatch.setattr(agents['coordinator'],'classify_intent',Mock(side_effect=AIConnectionError('Local AI service is unavailable. Make sure Ollama is running.')))
+    app.text_area[0].set_value('Synthetic request')
+    next(b for b in app.button if b.label=='Submit').click().run()
+    assert not app.exception
+    assert any('Make sure Ollama is running' in item.value for item in app.error)

@@ -3,8 +3,8 @@ from unittest.mock import Mock
 import pytest
 
 def response(monkeypatch,module,value):
-    mock=Mock(return_value={"message":{"content":value}})
-    monkeypatch.setattr(module.ollama,"chat",mock)
+    mock=Mock(return_value=value)
+    monkeypatch.setattr(module.ai_provider,"generate_chat",mock)
     return mock
 
 def test_qa(agents,monkeypatch):
@@ -59,8 +59,8 @@ def test_wrong_count(agents,monkeypatch,mcq):
 def test_paper(agents,monkeypatch,mcq):
     module=agents["assessment_agent"]
     desc={"question":"Synthetic describe","model_answer":"Synthetic answer","source_chunk":0}
-    chat=Mock(side_effect=[{"message":{"content":json.dumps([mcq,mcq])}},{"message":{"content":json.dumps([desc])}}])
-    monkeypatch.setattr(module.ollama,"chat",chat)
+    chat=Mock(side_effect=[json.dumps([mcq,mcq]),json.dumps([desc])])
+    monkeypatch.setattr(module.ai_provider,"generate_chat",chat)
     paper=module.generate_question_paper(num_mcq=2,num_descriptive=1,marks_per_mcq=2,marks_per_descriptive=5)
     assert len(paper["mcq_section"])==2 and len(paper["descriptive_section"])==1
     assert paper["total_marks"]==9

@@ -98,8 +98,8 @@ def test_filtered_unicode_export():
 
 
 def test_no_llm_used(monkeypatch):
-    import ollama
-    monkeypatch.setattr(ollama,'chat',lambda **kwargs:(_ for _ in ()).throw(AssertionError('No LLM')))
+    import ai_provider
+    monkeypatch.setattr(ai_provider,'generate_chat',lambda **kwargs:(_ for _ in ()).throw(AssertionError('No LLM')))
     analyze_performance(snapshot());analyze_performance(trend())
 
 
