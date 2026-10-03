@@ -86,9 +86,27 @@ def get_all_chunks(source_name=None, course=None, limit=15):
         where_clause["course"] = course
 
     if where_clause:
-        results = collection.get(where=where_clause, limit=limit)
+        results = collection.get(where={"$and": [{k: v} for k, v in where_clause.items()]} if len(where_clause) > 1 else where_clause, limit=limit)
     else:
         results = collection.get(limit=limit)
 
     # Return both the text AND the metadata, so questions can cite their source
     return results["documents"], results["metadatas"]
+
+# Exact-ID APIs for managed material lifecycle; no source-based deletion.
+def add_material_chunks(ids, chunks, metadata):
+    collection.add(ids=ids, documents=chunks, metadatas=[dict(metadata) for _ in chunks])
+
+
+def get_material_chunks(ids):
+    return collection.get(ids=ids)
+
+
+def delete_material_chunks(ids):
+    if ids:
+        collection.delete(ids=ids)
+
+
+def update_material_chunks(ids, metadatas):
+    if ids:
+        collection.update(ids=ids, metadatas=metadatas)

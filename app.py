@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 from content_agent import extract_text_from_pdf
-from vector_store import add_pdf_to_database
+from material_service import upload_material, delete_material, edit_hierarchy, MaterialError
 from student_support_agent import answer_question
 from assessment_agent import generate_questions
 from document_agent import generate_document
@@ -9,7 +9,7 @@ from analytics_agent import analyze_performance
 from coordinator import classify_intent
 from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes, generate_question_paper_pdf_bytes
 from document_agent import generate_batch_attendance_warnings
-from db import init_db, add_course_if_new, get_all_courses, add_document_record, get_documents_for_course, log_activity, get_recent_activity
+from db import list_materials, legacy_materials, init_db, add_course_if_new, get_all_courses, add_document_record, get_documents_for_course, log_activity, get_recent_activity
 from assessment_agent import generate_questions, generate_personalized_practice
 from assessment_agent import generate_questions, generate_personalized_practice, generate_question_paper
 
@@ -115,29 +115,29 @@ if page == "Upload Content":
     st.header("📄 Content Agent")
     st.write("Upload a PDF to add it to the searchable course material.")
 
-    course = st.text_input("Course name:", value="Machine Learning")
-    unit = st.text_input("Unit/Topic:", value="Unit 1")
-
+    course = st.text_input("Course name:", value="B.Tech CSE")
+    semester = st.text_input("Semester:", value="Semester 5")
+    subject = st.text_input("Subject:", value="Machine Learning")
+    unit = st.text_input("Unit:", value="Unit 1")
     uploaded_file = st.file_uploader("Choose a PDF", type="pdf")
 
-    if uploaded_file is not None:
-        save_path = os.path.join("uploads", uploaded_file.name)
-        with open(save_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-        st.success(f"Uploaded: {uploaded_file.name}")
-
     if st.button("Add to Database"):
-        with st.spinner("Processing PDF and storing chunks..."):
-            source_name = uploaded_file.name.replace(".pdf", "")
-            add_pdf_to_database(save_path, source_name, course=course, unit=unit)
-
-            # NEW: also record this in our persistent database
-            add_course_if_new(course)
-            add_document_record(source_name, course, unit, uploaded_file.name)
-            log_activity("upload", f"Uploaded '{uploaded_file.name}' to {course} / {unit}")
-
-        st.success(f"✅ Added to '{course} / {unit}'!")
+        if uploaded_file is None:
+            st.warning("Choose a PDF first.")
+        else:
+            try:
+                with st.spinner("Processing PDF and storing chunks..."):
+                    outcome = upload_material(uploaded_file.getvalue(), uploaded_file.name,
+                        dict(course=course, semester=semester, subject=subject, unit=unit))
+                if outcome["success"]:
+                    material = outcome["material"]
+                    st.success(f"Indexed {material['original_filename']} — " + " → ".join(material[k] for k in ('course','semester','subject','unit')))
+                else:
+                    st.warning(outcome["error"])
+                for warning in outcome.get("warnings", []):
+                    st.warning(warning)
+            except MaterialError as exc:
+                st.error(str(exc))
 
 
 # --- PAGE 2: STUDENT SUPPORT AGENT ---
@@ -347,16 +347,48 @@ elif page == "Analytics":
 
 elif page == "Courses & Activity":
     st.header("📚 Courses & Activity Log")
+    notice = st.session_state.pop("material_notice", None)
+    if notice:
+        st.success(notice)
 
     st.subheader("Courses")
     courses = get_all_courses()
     if courses:
         selected_course = st.selectbox("Select a course to see its material:", courses)
-        docs = get_documents_for_course(selected_course)
-        if docs:
-            for d in docs:
-                st.write(f"📄 **{d['filename']}** — {d['unit']} (uploaded {d['uploaded_at'][:16]})")
-        else:
+        docs = legacy_materials(selected_course)
+        managed = list_materials(selected_course)
+        for d in docs:
+            st.write(f"📄 **{d['filename']}** — {selected_course} → {d['semester']} → {d['subject']} → {d['unit']}")
+            st.caption(f"Uploaded: {(d.get('uploaded_at') or 'Unknown')[:16]}. Legacy material — ownership migration is required before editing or deletion.")
+        for material in managed:
+            identity = material['material_id']
+            st.caption(f"Uploaded: {material['created_at'][:16]}")
+            st.write(f"📄 **{material['original_filename']}** — " + " → ".join(material[k] for k in ('course','semester','subject','unit')))
+            with st.expander(f"Manage {material['original_filename']} ({identity[:8]})"):
+                values = {k: st.text_input(k.capitalize(), value=material[k], key=f"hierarchy_{identity}_{k}") for k in ('course','semester','subject','unit')}
+                if st.button("Save hierarchy", key=f"edit_{identity}"):
+                    try:
+                        outcome = edit_hierarchy(identity, values)
+                        if outcome['success']:
+                            st.session_state['material_notice'] = "Hierarchy updated in registry and exact vector metadata."
+                            st.rerun()
+                        else:
+                            st.error(outcome['error'])
+                        for warning in outcome.get('warnings', []):
+                            st.warning(warning)
+                    except MaterialError as exc:
+                        st.error(str(exc))
+                confirm = st.checkbox("Confirm permanent deletion", key=f"confirm_{identity}")
+                if st.button("Delete material", key=f"delete_{identity}", disabled=not confirm):
+                    outcome = delete_material(identity)
+                    if outcome['success']:
+                        st.session_state['material_notice'] = f"Material deleted: {outcome['vectors_deleted']} vectors removed; upload removed: {outcome['file_deleted']}. " + " ".join(outcome['warnings'])
+                        st.rerun()
+                    else:
+                        st.error(outcome['error'])
+                    for warning in outcome.get('warnings', []):
+                        st.warning(warning)
+        if not docs and not managed:
             st.write("No material uploaded yet for this course.")
     else:
         st.write("No courses yet — upload material under 'Upload Content' first.")
