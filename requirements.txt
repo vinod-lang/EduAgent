@@ -19,3 +19,6 @@ pytesseract==0.3.13
 # In-memory student XLSX parsing with hardened XML (no formula evaluation)
 openpyxl==3.1.5
 defusedxml==0.7.1
+
+# Structured output validation (already installed in rebuild environment).
+jsonschema==4.26.0

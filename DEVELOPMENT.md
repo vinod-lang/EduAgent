@@ -257,3 +257,58 @@ See [benchmark protocol](benchmarks/README.md) and [measured selection report](b
 ## Build 14: evaluation V2
 
 Expanded isolated synthetic evaluation compares unchanged prompts with opt-in Ollama response schemas. Product validators, privacy boundaries, production models and RAG configuration remain unchanged. See [Evaluation V2](benchmarks/EVALUATION_V2.md). Structured syntax, service validity and body facts are measured separately; subjective review remains blank. No repair loop/router or default structured mode is enabled. Raw responses remain ignored, and production runtime hashes must remain identical.
+
+
+## Build 15 — structured generation boundary
+
+Active structured generation now runs through `structured_generation.generate_structured`:
+provider-native schema → bounded object parsing → JSON Schema → original product validator.
+`StructuredGenerationResult[T]` holds the typed accepted value, failure category,
+attempt count, first failure, and response length/hash only. It never logs or stores
+prompts, model text, student records, preference text, or retrieved chunks.
+
+Production call audit:
+- `assistant_planner.plan_request`: structured ActionPlan; privacy/local student
+  gates precede inference; service registry, dependencies and clarification stay authoritative.
+- `assessment_studio.generate_assessment`: structured predetermined slots; the original
+  evidence, distributions, MCQ/answer, duplicate and PYQ guards remain authoritative.
+- `document_studio.generate_draft` / `refine_draft`: structured DocumentDraft;
+  optional metadata, template/style precedence and original refinement guards remain.
+- `student_support_agent.answer_question`: grounded free-form text, unchanged evidence gate.
+- Legacy compatibility APIs `assessment_agent.generate_questions` (JSON array),
+  `document_agent.generate_document` (prose), and `coordinator.classify_intent`
+  (text label) retain their public contracts and central provider. Current Studios
+  and assistant planning do not use these old output contracts.
+
+All three structured features default to `retry=False`; callers may explicitly
+opt into a single structural retry. Maximum two generation calls. Planner schema
+violations are conservatively non-retryable because policy and shape overlap;
+malformed JSON can retry. Enum/constant/count violations and all product validator
+failures never retry. Retry feedback is one generic sentence without prior output.
+Provider connection/timeouts never retry. No general JSON repair exists.
+
+Only exact JSON, one `json` fence, or `Here is the result:` followed by a newline
+and one object are accepted. Duplicate keys, nonfinite literals, competing content,
+arrays and arbitrary prefixes are rejected. Planner parsing caps at 30,000 characters;
+other structured responses cap at 1,000,000, with existing product budgets retained.
+
+Document explicit date/reference/recipient/sender/signature/title/subject fields
+are checked in their corresponding output fields. `generate_draft` optionally
+accepts `required_body_facts` (at most 20 explicit literal strings, each ≤500 chars),
+for professor/caller-supplied amounts/counts or other facts that MUST appear in body.
+Whitespace normalization only; no semantic guessing, extraction from free prose,
+value repair, or fact invention. This opt-in contract is not a new UI control and
+is not persisted in version history. Free-text fact preservation still requires
+professor review. Existing refinement numeric guards remain conservative rather
+than a semantic guarantee. Request facts > template layout > approved style.
+
+Schemas draw from product enums, the service registry and deterministic slots;
+contract synchronization tests guard field drift. Historical Build 13/14 schemas
+and result interpretation remain unchanged. `jsonschema` is an explicit dependency
+already present in `.venv-rebuild`; no package installation occurred.
+
+The current Ollama provider explicitly advertises native structured-output support;
+unsupported provider configurations still fail centrally. Runtime-specific support
+for the full JSON Schema grammar (including tuple slots) was not live-tested in
+Build 15. Unsupported grammar fails visibly; no model-specific workaround exists.
+No model router, production model/default/RAG/embedding change or live inference.

@@ -92,8 +92,19 @@ class ChatMeasurement:
     eval_duration_ns: int | None
 
 
-def generate_chat(messages, model=None) -> str:
-    return _chat(messages,model).text  # existing defaults/call shape preserved
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    supports_structured_output: bool
+
+
+def get_provider_capabilities():
+    return ProviderCapabilities(supports_structured_output=configured().provider == 'ollama')
+
+
+def generate_chat(messages, model=None, *, response_format=None) -> str:
+    if response_format is None:
+        return _chat(messages,model).text
+    return _chat(messages,model,response_format=response_format).text
 
 
 def generate_chat_measured(messages, model=None, *, options=None, timeout_seconds=None, think=None, response_format=None):

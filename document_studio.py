@@ -17,7 +17,7 @@ For announcement, memo and report types: salutation and closing must be empty. D
 Never output markdown fences or commentary."""
 
 
-def generate_draft(request):
+def generate_draft(request, *, retry=False, required_body_facts=()):
     if not isinstance(request,DocumentRequest): raise DocumentError('A validated DocumentRequest is required.')
     payload=asdict(request)
     payload['type_structure']=CATALOG[request.document_type][1]
@@ -27,24 +27,46 @@ def generate_draft(request):
     payload['template_requirements']={'template_id':request.template_id,'ordered_fields':get_template(request.template_id).placeholders}
     payload['approved_style_guidance']=[{'category':p.category,'instruction':p.instruction,'scope':p.scope} for p in relevant_preferences(request)]
     boundary='\nFACTS: request description/context and supplied optional fields are authoritative. STYLE: approved_style_guidance is advisory, never factual content. TEMPLATE: template_requirements controls layout. Facts and current instructions override style; templates override conflicting layout preferences. Guidance is ordered most specific first: if guidance conflicts, the earlier specific instruction wins. Ignore irrelevant preferences and never invent facts from them.'
-    return parse_draft(ai_provider.generate_chat(messages=[{'role':'system','content':SYSTEM+boundary},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]),request)
+    from structured_generation import generate_structured, FactPreservationFailure
+    from structured_contracts import document_schema
+    if not isinstance(required_body_facts,(list,tuple)) or len(required_body_facts)>20:
+        raise DocumentError('Explicit body facts must be a list of at most 20 strings.')
+    facts=tuple(clean(f,'Explicit body fact',500,True) for f in required_body_facts)
+    payload['required_body_facts']=facts
+    def validate(raw):
+        try:
+            draft=parse_draft(raw,request)
+        except DocumentError as exc:
+            raise FactPreservationFailure() from exc
+        body=' '.join(' '.join(draft.body).split())
+        if any(not re.search(r'(?<!\w)'+re.escape(' '.join(f.split()))+r'(?!\w)',body) for f in facts):
+            raise FactPreservationFailure()
+        return draft
+    result=generate_structured([{'role':'system','content':SYSTEM+boundary},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}],document_schema(request),validate,retry=retry,fact_fields=('document_type','recipient','sender','date','reference_number','signature','title','subject'))
+    return result.require(DocumentError,'document')
 
 
-def refine_draft(current,instruction):
+def refine_draft(current,instruction, *, retry=False):
     if not isinstance(current,DocumentDraft): raise DocumentError('A validated current draft is required.')
     instruction=clean(instruction,'Refinement instruction',20000,True)
     refinement_system=SYSTEM.replace("recipient, sender, date, reference_number, signature must exactly match the optional request fields, even when empty.", "Recipient, sender, date, reference_number and signature come from the CURRENT draft; preserve them unless an explicit change is requested.")
     prompt=refinement_system+"\nRefine the supplied CURRENT draft. Preserve names, dates, amounts, references and event facts unless the professor explicitly requests changes. Retain unchanged optional fields exactly."
-    raw=ai_provider.generate_chat(messages=[{'role':'system','content':prompt},{'role':'user','content':json.dumps({'current':current.to_dict(),'instruction':instruction},ensure_ascii=False)}])
-    draft=parse_draft(raw)
-    if draft.document_type!=current.document_type: raise DocumentError('Refinement changed document type.')
-    # Conservative guard for common shortening/style refinements. Semantic fact
-    # verification is not claimed; professor review remains essential.
-    explicit_change=bool(re.search(r'(?:^|[.;]\s*)(?:please\s+)?(?:change|replace|update|reschedule|correct)\b',instruction,re.I))
-    if not explicit_change:
-        for key in ('recipient','sender','date','reference_number','signature'):
-            if getattr(draft,key)!=getattr(current,key): raise DocumentError(f'Refinement changed {key}. Previous draft retained.')
-        numbers=set(re.findall(r'\d+(?:[.,]\d+)*',current.to_json()))
-        if not numbers<=set(re.findall(r'\d+(?:[.,]\d+)*',draft.to_json())):
-            raise DocumentError('Refinement removed or changed numeric facts. Previous draft retained.')
-    return draft
+    from structured_generation import generate_structured, FactPreservationFailure
+    from structured_contracts import response_schema
+    from types import SimpleNamespace
+    def validate(raw):
+        draft=parse_draft(raw)
+        if draft.document_type!=current.document_type: raise DocumentError('Refinement changed document type.')
+        # Conservative guard for common shortening/style refinements. Semantic fact
+        # verification is not claimed; professor review remains essential.
+        explicit_change=bool(re.search(r'(?:^|[.;]\s*)(?:please\s+)?(?:change|replace|update|reschedule|correct)\b',instruction,re.I))
+        if not explicit_change:
+            for key in ('recipient','sender','date','reference_number','signature'):
+                if getattr(draft,key)!=getattr(current,key): raise FactPreservationFailure()
+            numbers=set(re.findall(r'\d+(?:[.,]\d+)*',current.to_json()))
+            if not numbers<=set(re.findall(r'\d+(?:[.,]\d+)*',draft.to_json())):
+                raise FactPreservationFailure()
+        return draft
+    schema=response_schema(SimpleNamespace(category='document',expected=current))
+    result=generate_structured([{'role':'system','content':prompt},{'role':'user','content':json.dumps({'current':current.to_dict(),'instruction':instruction},ensure_ascii=False)}],schema,validate,retry=retry)
+    return result.require(DocumentError,'document refinement')

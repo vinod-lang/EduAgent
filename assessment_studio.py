@@ -125,7 +125,7 @@ def validate_output(raw,spec,evidence,*,pyq_text=''):
     return result
 
 
-def generate_assessment(spec, *, pyq_text='', collection=None):
+def generate_assessment(spec, *, pyq_text='', collection=None, retry=False):
     if not isinstance(spec,AssessmentSpec):raise AssessmentError('A validated AssessmentSpec is required.')
     if not isinstance(pyq_text,str) or len(pyq_text)>20000:raise AssessmentError('PYQ guidance must be text up to 20,000 characters.')
     evidence=assessment_evidence(spec,collection=collection)
@@ -134,5 +134,7 @@ def generate_assessment(spec, *, pyq_text='', collection=None):
         slots=[s.to_dict() for s in spec.plan],topic=spec.topic,
         teaching_evidence=[dict(evidence_id=f'E{i+1}',text=c.text,unit=c.unit) for i,c in enumerate(evidence)],
         pyq_style_guidance=pyq_text)
-    raw=ai_provider.generate_chat(messages=[dict(role='system',content=system),dict(role='user',content=json.dumps(payload,ensure_ascii=False))])
-    return validate_output(raw,spec,evidence,pyq_text=pyq_text)
+    from structured_generation import generate_structured
+    from structured_contracts import assessment_schema
+    result=generate_structured([dict(role='system',content=system),dict(role='user',content=json.dumps(payload,ensure_ascii=False))],assessment_schema(spec,evidence),lambda raw:validate_output(raw,spec,evidence,pyq_text=pyq_text),retry=retry)
+    return result.require(AssessmentError,'assessment')
