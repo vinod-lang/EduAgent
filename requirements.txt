@@ -15,3 +15,7 @@ httpx==0.28.1
 # Local image decoding and OCR
 Pillow==12.3.0
 pytesseract==0.3.13
+
+# In-memory student XLSX parsing with hardened XML (no formula evaluation)
+openpyxl==3.1.5
+defusedxml==0.7.1

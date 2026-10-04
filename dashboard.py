@@ -24,13 +24,13 @@ ACTIONS = {
     'preference_disabled': 'Preference disabled',
     'preference_deleted': 'Preference deleted',
 }
-PAGES = ('Professor Dashboard', 'Upload Content', 'Ask a Question', 'Assessment Studio', 'Document Studio', 'Analytics', 'Activity Log')
+PAGES = ('Professor Dashboard', 'Upload Content', 'Ask a Question', 'Assessment Studio', 'Document Studio', 'Student Data Hub', 'Activity Log')
 QUICK_ACTIONS = {
     'Upload Content': 'Upload Content',
     'Ask Knowledge Base': 'Ask a Question',
     'Create Assessment': 'Assessment Studio',
     'Create Document': 'Document Studio',
-    'Analyze Students': 'Analytics',
+    'Analyze Students': 'Student Data Hub',
     'View Activity': 'Activity Log',
 }
 
