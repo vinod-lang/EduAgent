@@ -17,6 +17,12 @@ ACTIONS = {
     'generate_document': 'Document generated',
     'document_generated': 'Document generated',
     'document_saved': 'Document saved',
+    'document_version_created': 'Document version saved',
+    'document_feedback_saved': 'Document feedback saved',
+    'preference_approved': 'Preference approved',
+    'preference_updated': 'Preference updated',
+    'preference_disabled': 'Preference disabled',
+    'preference_deleted': 'Preference deleted',
 }
 PAGES = ('Professor Dashboard', 'Upload Content', 'Ask a Question', 'Assessment Studio', 'Document Studio', 'Analytics', 'Activity Log')
 QUICK_ACTIONS = {

@@ -22,7 +22,12 @@ def generate_draft(request):
     payload=asdict(request)
     payload['type_structure']=CATALOG[request.document_type][1]
     payload['type_guidance']=CATALOG[request.document_type][2]
-    return parse_draft(ai_provider.generate_chat(messages=[{'role':'system','content':SYSTEM},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]),request)
+    from document_preferences import relevant_preferences
+    from document_templates import get_template
+    payload['template_requirements']={'template_id':request.template_id,'ordered_fields':get_template(request.template_id).placeholders}
+    payload['approved_style_guidance']=[{'category':p.category,'instruction':p.instruction,'scope':p.scope} for p in relevant_preferences(request)]
+    boundary='\nFACTS: request description/context and supplied optional fields are authoritative. STYLE: approved_style_guidance is advisory, never factual content. TEMPLATE: template_requirements controls layout. Facts and current instructions override style; templates override conflicting layout preferences. Guidance is ordered most specific first: if guidance conflicts, the earlier specific instruction wins. Ignore irrelevant preferences and never invent facts from them.'
+    return parse_draft(ai_provider.generate_chat(messages=[{'role':'system','content':SYSTEM+boundary},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}]),request)
 
 
 def refine_draft(current,instruction):

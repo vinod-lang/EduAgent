@@ -7,6 +7,7 @@ from document_studio import generate_draft,refine_draft
 from document_templates import TEMPLATES,get_template
 from document_export import document_docx_bytes,document_pdf_bytes
 from document_repository import save_draft,list_drafts,load_draft
+from document_feedback_ui import render_history,render_preferences,render_feedback
 
 
 def _activity(action):
@@ -24,7 +25,7 @@ def render_document_studio():
     pending=st.session_state.pop('studio_pending_versions',None)
     if pending is not None:_set_editor(pending)
     st.header('Document Studio')
-    st.caption('Describe the purpose and known facts. Review every draft before sending. No model learning occurs from edits.')
+    st.caption('Describe the purpose and known facts. Only explicitly approved local preferences guide future drafts; the underlying model is not trained.')
     kind=st.selectbox('Document type',list(CATALOG),format_func=lambda k:CATALOG[k][0],key='studio_type')
     description=st.text_area('Describe what you need drafted',key='studio_description',height=140)
     tone=st.selectbox('Tone',TONES,key='studio_tone')
@@ -35,6 +36,7 @@ def render_document_studio():
         for field in ('recipient','sender','title','subject','date','reference_number','signature'):
             values[field]=st.text_input(field.replace('_',' ').capitalize(),key='studio_request_'+field)
         values['additional_context']=st.text_area('Additional context',key='studio_context')
+    render_preferences(kind,template)
     if st.button('Generate document',disabled=not description.strip()):
         try:
             request=DocumentRequest(kind,description,tone,template,**values)
@@ -83,7 +85,7 @@ def render_document_studio():
     if st.button('Refine current document',disabled=not refinement.strip()):
         try:
             with st.spinner('Refining the applied current version...'):draft=refine_draft(versions.current,refinement)
-            st.session_state['studio_pending_versions']=versions.update(draft);st.rerun()
+            st.session_state['studio_pending_versions']=versions.update(draft,'ai_refinement');st.rerun()
         except (DocumentError,AIProviderError) as exc:st.error(str(exc))
     status=st.selectbox('Save status',['Draft','Final'])
     if st.button('Update Draft' if st.session_state.get('studio_saved_id') else 'Save Draft'):
@@ -93,6 +95,10 @@ def render_document_studio():
             st.rerun()
         except DocumentError as exc:st.error(str(exc))
     if st.session_state.get('studio_save_message'):st.success(st.session_state.pop('studio_save_message'))
+    restored=render_history(versions,st.session_state.get('studio_saved_id'))
+    if restored is not None:
+        st.session_state['studio_pending_versions']=restored;st.rerun()
+    render_feedback(versions,st.session_state.get('studio_saved_id'))
     st.subheader('Current document preview')
     for field,text in get_template(versions.template_id).blocks(versions.current):
         if field=='title':st.subheader(text)
