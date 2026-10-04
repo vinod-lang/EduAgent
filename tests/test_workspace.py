@@ -135,7 +135,8 @@ def test_activity_malformed_sanitized(storage,monkeypatch):
     assert get_activity_view()==[dict(timestamp='Time unavailable',action='Recorded activity')]*2
 
 def test_blank_assistant_does_not_dispatch(workspace,agents,monkeypatch):
-    classifier=Mock();monkeypatch.setattr(agents['coordinator'],'classify_intent',classifier)
+    import assistant_ui
+    classifier=Mock();monkeypatch.setattr(assistant_ui,'plan_request',classifier)
     app=workspace();button(app,'Submit').click().run()
     assert not app.exception and app.warning;classifier.assert_not_called()
 
@@ -178,8 +179,10 @@ def test_unchecked_delete_never_calls_service(workspace,storage,hierarchy,monkey
     assert db.get_material(material['material_id'])==material
 
 def test_unknown_assistant_intent_keeps_existing_fallback(workspace,agents,monkeypatch):
-    classifier=Mock(return_value='unknown')
-    monkeypatch.setattr(agents['coordinator'],'classify_intent',classifier)
+    import assistant_ui
+    from assistant_models import parse_plan
+    classifier=Mock(return_value=parse_plan('{"actions":[],"unsupported":true}','Synthetic request'))
+    monkeypatch.setattr(assistant_ui,'plan_request',classifier)
     app=workspace();app.text_area[0].set_value('Synthetic request');button(app,'Submit').click().run()
-    assert not app.exception and any("couldn't confidently classify" in e.value for e in app.info)
-    classifier.assert_called_once_with('Synthetic request')
+    assert not app.exception and any('Unsupported request' in e.value for e in app.info)
+    assert classifier.call_count==1

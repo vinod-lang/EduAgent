@@ -92,6 +92,11 @@ def render_assessment_studio():
     result,generated_fingerprint=stored
     if spec!=result.spec or fingerprint!=generated_fingerprint:
         st.info('Configuration/PYQ changed. Regenerate to review and export the current specification.');return
+    render_assessment_result(result)
+
+
+def render_assessment_result(result, key_prefix="assessment_studio"):
+    spec=result.spec
     st.success('Assessment structure validated. Review academic accuracy, difficulty and Bloom alignment before use.')
     st.subheader('Validation summary')
     summary=result.validation_summary
@@ -112,8 +117,8 @@ def render_assessment_studio():
     st.caption('Student paper excludes answer keys and internal retrieval metadata. Professor keys are separate and require grading review.')
     try:
         paper=assessment_pdf_bytes(result);key=assessment_pdf_bytes(result,answer_key=True)
-        st.download_button('Student paper PDF',paper,'assessment.pdf','application/pdf')
-        st.download_button('Professor answer key PDF',key,'assessment_answer_key.pdf','application/pdf')
-        st.download_button('Student paper DOCX',assessment_docx_bytes(result),'assessment.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-        st.download_button('Professor answer key DOCX',assessment_docx_bytes(result,answer_key=True),'assessment_answer_key.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        st.download_button('Student paper PDF',paper,'assessment.pdf','application/pdf',key=key_prefix+'_paper_pdf')
+        st.download_button('Professor answer key PDF',key,'assessment_answer_key.pdf','application/pdf',key=key_prefix+'_key_pdf')
+        st.download_button('Student paper DOCX',assessment_docx_bytes(result),'assessment.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',key=key_prefix+'_paper_docx')
+        st.download_button('Professor answer key DOCX',assessment_docx_bytes(result,answer_key=True),'assessment_answer_key.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',key=key_prefix+'_key_docx')
     except AssessmentExportError as exc:st.error(str(exc))

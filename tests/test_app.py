@@ -37,26 +37,28 @@ def test_manual_edit_export(app,monkeypatch):
 
 @pytest.mark.parametrize("intent", ["question","quiz","document","quiz_and_notice"])
 def test_dispatch(app,agents,monkeypatch,mcq,intent):
-    monkeypatch.setattr(agents["coordinator"],"classify_intent",Mock(return_value=intent))
-    qa=Mock(return_value=("Synthetic answer",["Synthetic source"]))
-    quiz=Mock(return_value=[dict(mcq,source_label="Synthetic source")])
-    doc=Mock(return_value="Synthetic notice")
-    monkeypatch.setattr(agents["student_support_agent"],"answer_question",qa)
-    monkeypatch.setattr(agents["assessment_agent"],"generate_questions",quiz)
-    monkeypatch.setattr(agents["document_agent"],"generate_document",doc)
-    app.text_area[0].set_value("Synthetic request")
-    next(button for button in app.button if button.label=="Submit").click().run()
+    import assistant_ui
+    from assistant_models import parse_plan,ActionResult,ExecutionReport
+    kinds={'question':['ASK_KNOWLEDGE'],'quiz':['CREATE_ASSESSMENT'],'document':['CREATE_DOCUMENT'],'quiz_and_notice':['CREATE_ASSESSMENT','CREATE_DOCUMENT']}[intent]
+    import json
+    plan=parse_plan(json.dumps({'unsupported':False,'actions':[dict(action_id='a'+str(i),action_type=k,parameters={},depends_on=[]) for i,k in enumerate(kinds)]}),'Synthetic request')
+    monkeypatch.setattr(assistant_ui,'plan_request',Mock(return_value=plan))
+    monkeypatch.setattr(assistant_ui,'validate_plan',Mock(return_value=()))
+    run=Mock(return_value=ExecutionReport(plan.plan_id,tuple(ActionResult(a.action_id,'failed',a.action_type,'Failed.') for a in plan.actions)))
+    monkeypatch.setattr(assistant_ui,'execute_plan',run)
+    app.text_area[0].set_value('Synthetic request')
+    next(b for b in app.button if b.label=='Submit').click().run()
+    assert not app.exception and not run.called
+    next(b for b in app.button if b.label=='Execute reviewed plan').click().run()
     assert not app.exception
-    assert qa.called==(intent=="question")
-    assert quiz.called==(intent in ["quiz","quiz_and_notice"])
-    assert doc.called==(intent in ["document","quiz_and_notice"])
-    if quiz.called:quiz.assert_called_once_with(source_name="PCA",num_questions=5)
+    run.assert_called_once()
 
 
 def test_controlled_provider_failure(app,agents,monkeypatch):
     from ai_provider import AIConnectionError
-    monkeypatch.setattr(agents['coordinator'],'classify_intent',Mock(side_effect=AIConnectionError('Local AI service is unavailable. Make sure Ollama is running.')))
+    import assistant_ui
+    monkeypatch.setattr(assistant_ui,'plan_request',Mock(side_effect=AIConnectionError('Local AI service is unavailable. Make sure Ollama is running.')))
     app.text_area[0].set_value('Synthetic request')
     next(b for b in app.button if b.label=='Submit').click().run()
     assert not app.exception
-    assert any('Make sure Ollama is running' in item.value for item in app.error)
+    assert any('Ollama availability' in item.value for item in app.error)

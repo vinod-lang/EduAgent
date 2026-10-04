@@ -72,87 +72,15 @@ def render_material_browser(materials, courses, *, edit_hierarchy, delete_materi
 
 def render_assistant(*, call_ai, classify_intent, answer_question, generate_questions, generate_document, navigate_to):
     st.subheader("Smart Assistant")
-    st.write("Type what you want in plain English. The coordinator will decide which agent(s) should handle it.")
+    st.write("Type what you want in plain English. Review the proposed plan before any service executes.")
 
     columns = st.columns(3)
     for position, (label, target) in enumerate(QUICK_ACTIONS.items()):
         columns[position % 3].button(label, on_click=navigate_to, args=(target,), key=f"quick_{target}")
     st.caption("Create Assessment opens Assessment Studio for Quiz or Question Paper generation.")
 
-    user_input = st.text_area(
-        "What do you need?", key="dashboard_assistant_request",
-        placeholder="e.g. 'Make a 10-question quiz from Unit 3 and a notice announcing it for tomorrow'"
-    )
-
-    if st.button("Submit"):
-        if user_input.strip() == "":
-            st.warning("Please type a request.")
-        else:
-            with st.spinner("Deciding which agent(s) should handle this..."):
-                intent = call_ai(classify_intent, user_input)
-
-            st.caption(f"🔀 Routed to: **{intent}**")
-
-            if intent == "question":
-                with st.spinner("Thinking..."):
-                    answer, sources = call_ai(answer_question, user_input)
-                st.write(answer)
-                if sources:
-                    st.caption(f"📚 Source: {', '.join(sources)}")
-
-            elif intent == "quiz":
-                with st.spinner("Generating quiz..."):
-                    questions = call_ai(generate_questions, source_name="PCA", num_questions=5)
-                if questions:
-                    for i, q in enumerate(questions, start=1):
-                        st.markdown(f"**Q{i}. {q['question']}**")
-                        if "options" in q:
-                            for letter, opt in q["options"].items():
-                                st.write(f"{letter}) {opt}")
-                else:
-                    st.error("Could not generate a valid quiz.")
-
-            elif intent == "document":
-                with st.spinner("Drafting document..."):
-                    doc = call_ai(generate_document, "Notice", {
-                        "course": "General", "subject": user_input,
-                        "details": user_input, "date": "TBD"
-                    })
-                st.text_area("Result:", value=doc, height=250)
-
-            elif intent == "quiz_and_notice":
-                # STEP 1: Assessment Agent runs first
-                with st.spinner("Step 1/2 — Generating quiz..."):
-                    questions = call_ai(generate_questions, source_name="PCA", num_questions=5)
-
-                # STEP 2: Document Agent runs next, referencing the quiz
-                with st.spinner("Step 2/2 — Drafting announcement notice..."):
-                    doc = call_ai(generate_document, "Notice", {
-                        "course": "General",
-                        "subject": "Upcoming Test",
-                        "details": user_input,
-                        "date": "Tomorrow"
-                    })
-
-                st.success("✅ Two agents completed this request — please review both before use.")
-
-                st.subheader("1️⃣ Generated Quiz (Assessment Agent)")
-                if questions:
-                    for i, q in enumerate(questions, start=1):
-                        st.markdown(f"**Q{i}. {q['question']}**")
-                        if "options" in q:
-                            for letter, opt in q["options"].items():
-                                st.write(f"{letter}) {opt}")
-                else:
-                    st.error("Quiz generation failed.")
-
-                st.subheader("2️⃣ Generated Notice (Document Agent)")
-                st.text_area("Notice:", value=doc, height=200)
-
-            else:
-                st.info("I couldn't confidently classify this request. Try rephrasing, or use the sidebar tabs directly.")
-
-
+    from assistant_ui import render_assistant
+    render_assistant(navigate_to)
 
 
 def render_dashboard(overview, materials, courses, *, call_ai, classify_intent, answer_question,

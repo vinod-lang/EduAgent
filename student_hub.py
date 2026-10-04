@@ -67,6 +67,6 @@ def clear_student_data(state):
     """Remove only this workflow's state; rotate uploader to release widget bytes."""
     epoch = state.get('student_epoch',0)+1
     for key in list(state):
-        if key.startswith('student_') or key in {'analytics_signature','batch_letters','practice_sets'}:
+        if key.startswith('student_') or key in {'assistant_plan','assistant_report'} or key in {'analytics_signature','batch_letters','practice_sets'}:
             del state[key]
     state['student_epoch'] = epoch
