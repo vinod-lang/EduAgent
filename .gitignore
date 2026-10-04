@@ -47,3 +47,7 @@ eduagent.db
 
 # Separate rebuild environment; preserve the original venv
 .venv-rebuild/
+
+# Isolated benchmark outputs and caches (source fixtures remain tracked)
+/benchmarks/results/
+/benchmarks/cache/
