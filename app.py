@@ -40,7 +40,8 @@ st.title("🎓 EduAgent — AI Assistant for Course Material")
 
 # Dashboard hosts the coordinator UI; sidebar navigation opens dedicated workflows.
 legacy_navigation = {"Smart Assistant": "Professor Dashboard", "Courses & Activity": "Activity Log",
-                     "Generate Quiz": "Assessment Studio", "Question Paper": "Assessment Studio"}
+                     "Generate Quiz": "Assessment Studio", "Question Paper": "Assessment Studio",
+                     "Draft Document": "Document Studio"}
 if st.session_state.get("navigation") in legacy_navigation:
     st.session_state["navigation"] = legacy_navigation[st.session_state["navigation"]]
 page = st.sidebar.radio(
@@ -152,44 +153,9 @@ elif page == "Assessment Studio":
     render_assessment_studio()
 
 
-elif page == "Draft Document":
-    st.header("📋 Document Agent")
-    st.write("Pick a template and fill in the details — no need to write full sentences.")
-
-    from document_agent import TEMPLATES  # import the template definitions
-
-    template_name = st.selectbox("Document type:", list(TEMPLATES.keys()))
-    fields_needed = TEMPLATES[template_name]["fields"]
-
-    # Dynamically create one input box per field this template needs
-    field_values = {}
-    for field in fields_needed:
-        label = field.replace("_", " ").capitalize()
-        field_values[field] = st.text_input(label, key=f"doc_{field}")
-
-    if st.button("Generate Document"):
-        missing = [f for f in fields_needed if not field_values[f].strip()]
-        if missing:
-            st.warning(f"Please fill in: {', '.join(missing)}")
-        else:
-            with st.spinner("Drafting document..."):
-                document = call_ai(generate_document, template_name, field_values)
-            st.session_state["document"] = document
-            st.session_state["document_template"] = template_name
-            st.session_state.pop("document_editor", None)
-            log_activity("generate_document", f"{template_name} document generated")
-
-    if "document" in st.session_state:
-        st.subheader("Generated Document (review before sending)")
-        st.session_state["document"] = st.text_area("Result:", value=st.session_state["document"], height=300, key="document_editor")
-
-        docx_buffer = generate_docx_bytes(st.session_state["document"])
-        st.download_button(
-            label="📥 Download as Word Document (.docx)",
-            data=docx_buffer,
-            file_name=f"{st.session_state.get('document_template', 'Document').replace(' ', '_')}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+elif page == "Document Studio":
+    from document_ui import render_document_studio
+    render_document_studio()
 
 # --- PAGE 5: ANALYTICS AGENT ---
 elif page == "Analytics":

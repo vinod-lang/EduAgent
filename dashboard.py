@@ -15,13 +15,15 @@ ACTIONS = {
     'batch_warnings': 'Attendance warning batch generated',
     'personalized_practice': 'Practice batch generated',
     'generate_document': 'Document generated',
+    'document_generated': 'Document generated',
+    'document_saved': 'Document saved',
 }
-PAGES = ('Professor Dashboard', 'Upload Content', 'Ask a Question', 'Assessment Studio', 'Draft Document', 'Analytics', 'Activity Log')
+PAGES = ('Professor Dashboard', 'Upload Content', 'Ask a Question', 'Assessment Studio', 'Document Studio', 'Analytics', 'Activity Log')
 QUICK_ACTIONS = {
     'Upload Content': 'Upload Content',
     'Ask Knowledge Base': 'Ask a Question',
     'Create Assessment': 'Assessment Studio',
-    'Draft Document': 'Draft Document',
+    'Create Document': 'Document Studio',
     'Analyze Students': 'Analytics',
     'View Activity': 'Activity Log',
 }

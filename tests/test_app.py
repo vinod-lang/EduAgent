@@ -15,22 +15,25 @@ def app(agents,monkeypatch,tmp_path):
             monkeypatch.setattr(module.ai_provider,"generate_chat",Mock(side_effect=AssertionError("No live generation in tests")))
     return AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"),default_timeout=20).run()
 
-@pytest.mark.parametrize("page", ["Professor Dashboard","Upload Content","Ask a Question","Assessment Studio","Draft Document","Analytics","Activity Log"])
+@pytest.mark.parametrize("page", ["Professor Dashboard","Upload Content","Ask a Question","Assessment Studio","Document Studio","Analytics","Activity Log"])
 def test_pages_with_document(app,page):
     app.session_state["document"]="Synthetic draft"
     app.sidebar.radio[0].set_value(page).run()
     assert not app.exception
 
 def test_manual_edit_export(app,monkeypatch):
-    original=export_utils.generate_docx_bytes
-    spy=Mock(side_effect=original);monkeypatch.setattr(export_utils,"generate_docx_bytes",spy)
+    import document_export
+    from docx import Document
     app.session_state["document"]="Synthetic old draft"
-    app.sidebar.radio[0].set_value("Draft Document").run()
-    editor=next(area for area in app.text_area if area.label=="Result:")
-    editor.set_value("Synthetic edited draft").run()
+    app.sidebar.radio[0].set_value("Document Studio").run()
+    app.text_area(key='studio_edit_body').set_value("Synthetic edited draft")
+    next(b for b in app.button if b.label=='Apply edits').click().run()
     assert not app.exception
-    assert app.session_state["document"]=="Synthetic edited draft"
-    spy.assert_called_with("Synthetic edited draft")
+    versions=app.session_state['studio_versions']
+    assert versions.original.body==('Synthetic old draft',)
+    assert versions.current.body==('Synthetic edited draft',)
+    text='\n'.join(p.text for p in Document(io.BytesIO(document_export.document_docx_bytes(versions.current))).paragraphs)
+    assert 'Synthetic edited draft' in text and 'Synthetic old draft' not in text
 
 @pytest.mark.parametrize("intent", ["question","quiz","document","quiz_and_notice"])
 def test_dispatch(app,agents,monkeypatch,mcq,intent):
