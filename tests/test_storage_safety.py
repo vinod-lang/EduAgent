@@ -14,7 +14,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 @pytest.mark.parametrize('names',[
  ['vector_store'],['assessment_agent'],['student_support_agent'],['assessment_studio'],
- ['vector_store','assessment_agent','student_support_agent','assessment_studio','assessment_ui','coordinator','document_studio','document_ui','document_repository','document_diff','document_preferences','document_feedback_ui','student_ingestion','student_hub','student_hub_ui','assistant_models','assistant_services','assistant_planner','assistant_ui','benchmarks.cases','benchmarks.models','benchmarks.runner','benchmarks.scoring','benchmarks.retrieval','benchmarks.report','benchmarks.embedding_runner','benchmarks.pipeline']])
+ ['vector_store','assessment_agent','student_support_agent','assessment_studio','assessment_ui','coordinator','document_studio','document_ui','document_repository','document_diff','document_preferences','document_feedback_ui','student_ingestion','student_hub','student_hub_ui','assistant_models','assistant_services','assistant_planner','assistant_ui','benchmarks.cases','benchmarks.models','benchmarks.runner','benchmarks.scoring','benchmarks.retrieval','benchmarks.report','benchmarks.embedding_runner','benchmarks.pipeline','benchmarks.cases_v2','benchmarks.contracts_v2','benchmarks.failures_v2','benchmarks.evaluation_v2','benchmarks.retrieval_v2']])
 def test_imports_never_initialize_storage_or_model(tmp_path,names):
     target=tmp_path/'chroma_db';target.mkdir();sentinel=target/'chroma.sqlite3';sentinel.write_bytes(b'isolated sentinel - not a real database')
     before=sentinel.read_bytes()

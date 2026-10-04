@@ -28,7 +28,7 @@ def get_default_model_name() -> str:
     return configured().model
 
 
-def _chat(messages, model=None, *, options=None, timeout_seconds=None, think=None):
+def _chat(messages, model=None, *, options=None, timeout_seconds=None, think=None, response_format=None):
     if not isinstance(messages, Sequence) or isinstance(messages, (str, bytes)) or not messages:
         raise AIProviderError('Messages must be a nonempty sequence.')
     normalized = []
@@ -53,6 +53,12 @@ def _chat(messages, model=None, *, options=None, timeout_seconds=None, think=Non
     kwargs={}
     if options is not None:kwargs['options']=dict(options)
     if think is not None:kwargs['think']=think
+    if response_format is not None:
+        if not isinstance(response_format,Mapping) or response_format.get("type")!="object":
+            raise AIProviderError("Structured response schema must describe an object.")
+        import json
+        try: kwargs["format"]=json.loads(json.dumps(dict(response_format),allow_nan=False))
+        except (ValueError,TypeError) as exc: raise AIProviderError("Invalid structured response schema.") from exc
     started=time.perf_counter()
     try:
         with ollama.Client(host=settings.base_url, timeout=settings.timeout_seconds if timeout_seconds is None else timeout_seconds) as client:
@@ -90,6 +96,6 @@ def generate_chat(messages, model=None) -> str:
     return _chat(messages,model).text  # existing defaults/call shape preserved
 
 
-def generate_chat_measured(messages, model=None, *, options=None, timeout_seconds=None, think=None):
+def generate_chat_measured(messages, model=None, *, options=None, timeout_seconds=None, think=None, response_format=None):
     """Explicit opt-in instrumentation; never changes application defaults."""
-    return _chat(messages,model,options=options,timeout_seconds=timeout_seconds,think=think)
+    return _chat(messages,model,options=options,timeout_seconds=timeout_seconds,think=think,response_format=response_format)
