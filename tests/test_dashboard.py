@@ -67,7 +67,7 @@ def test_default_dashboard_and_empty_states(dashboard_app):
     assert not app.exception and app.sidebar.radio[0].value == 'Professor Dashboard'
     assert [item.value for item in app.metric] == ['0', '0', '0']
     assert len(app.info) == 3
-    assert len(app.sidebar.radio[0].options) == 8
+    assert len(app.sidebar.radio[0].options) == 7
 
 
 @pytest.mark.parametrize('target', QUICK_ACTIONS)

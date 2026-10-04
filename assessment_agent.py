@@ -212,3 +212,6 @@ def generate_question_paper(
             paper["total_marks"] += marks_per_descriptive * len(descriptive)
 
     return paper
+
+# Unified Studio entry point; legacy APIs remain for Analytics/coordinator compatibility.
+from assessment_studio import generate_assessment

@@ -27,7 +27,7 @@ def test_vector_exact_apis():
     module=ast.Module(body=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in names],type_ignores=[])
     collection=Mock();collection.get.return_value={'documents':['synthetic'],'metadatas':[{'source':'PCA'}]}
     from retrieval import build_filter
-    env={'collection':collection, 'build_filter':build_filter};exec(compile(module,'vector_store.py','exec'),env)
+    env={'_resolve_collection':lambda supplied,path: collection if supplied is None else supplied, 'build_filter':build_filter};exec(compile(module,'vector_store.py','exec'),env)
     env['get_all_chunks']('PCA','C')
     assert collection.get.call_args.kwargs['where']=={'$and':[{'course':'C'},{'source':'PCA'}]}
     env['add_material_chunks'](['uuid_chunk_0'],['text'],{'material_id':'uuid'})

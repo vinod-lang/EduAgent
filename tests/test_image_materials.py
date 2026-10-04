@@ -116,7 +116,9 @@ def test_ocr_retrieval_qa_and_assessment(storage, hierarchy, monkeypatch, agents
     tree = ast.parse((Path(__file__).resolve().parents[1]/'vector_store.py').read_text())
     module = ast.Module(body=[node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in ('search_database', 'get_all_chunks')], type_ignores=[])
     from retrieval import build_filter
-    env = {'collection': Collection(), 'build_filter':build_filter}; exec(compile(module, 'vector_store.py', 'exec'), env)
+    env = {'collection': Collection(), 'build_filter':build_filter}
+    env['_resolve_collection'] = lambda supplied, path: env['collection'] if supplied is None else supplied
+    exec(compile(module, 'vector_store.py', 'exec'), env)
     qa = agents['student_support_agent']; assessment = agents['assessment_agent']
     monkeypatch.setattr(agents['vectors'], 'collection', env['collection'])
     monkeypatch.setattr(assessment, 'get_all_chunks', env['get_all_chunks'])

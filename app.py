@@ -2,6 +2,7 @@ from retrieval import RetrievalError
 from rag_ui import available_courses, scope_options
 from dashboard import get_dashboard_summary, get_activity_view, PAGES
 from workspace_ui import render_dashboard, render_activity
+from assessment_ui import render_assessment_studio
 from config import get_max_upload_bytes, ConfigurationError
 import streamlit as st
 import os
@@ -38,7 +39,8 @@ st.set_page_config(page_title="EduAgent", page_icon="🎓", layout="centered")
 st.title("🎓 EduAgent — AI Assistant for Course Material")
 
 # Dashboard hosts the coordinator UI; sidebar navigation opens dedicated workflows.
-legacy_navigation = {"Smart Assistant": "Professor Dashboard", "Courses & Activity": "Activity Log"}
+legacy_navigation = {"Smart Assistant": "Professor Dashboard", "Courses & Activity": "Activity Log",
+                     "Generate Quiz": "Assessment Studio", "Question Paper": "Assessment Studio"}
 if st.session_state.get("navigation") in legacy_navigation:
     st.session_state["navigation"] = legacy_navigation[st.session_state["navigation"]]
 page = st.sidebar.radio(
@@ -145,62 +147,11 @@ elif page == "Ask a Question":
                 st.json(result.retrieval.diagnostics.to_dict())
 
 
-# --- PAGE 3: ASSESSMENT AGENT ---
-elif page == "Generate Quiz":
-    st.header("📝 Assessment Agent")
-    st.write("Generate questions from the course material.")
+# Unified professor-facing assessment workflow.
+elif page == "Assessment Studio":
+    render_assessment_studio()
 
-    source_name = st.text_input("Source name:", value="PCA")
-    course_filter = st.text_input("Course (optional):", value="")
-    question_type = st.selectbox("Question type:", ["MCQ", "Descriptive"])
-    difficulty = st.selectbox("Difficulty:", ["Easy", "Medium", "Hard"])
-    num_questions = st.slider("Number of questions:", 1, 10, 5)
 
-    if st.button("Generate Questions"):
-        with st.spinner("Generating questions... this can take a minute on a local model"):
-            course_arg = course_filter if course_filter.strip() else None
-            questions = call_ai(generate_questions,
-                source_name=source_name,
-                course=course_arg,
-                num_questions=num_questions,
-                question_type=question_type,
-                difficulty=difficulty
-            )
-
-        if questions is None:
-            st.error("Could not generate valid questions. Try again.")
-        else:
-            st.session_state["questions"] = questions
-            log_activity("generate_quiz", f"{num_questions} {question_type} questions from {source_name}")
-
-    if "questions" in st.session_state:
-        questions = st.session_state["questions"]
-
-        st.subheader("Generated Questions (review before use)")
-        pdf_buffer = generate_quiz_pdf_bytes(questions, title=f"{source_name} — Quiz")
-        st.download_button(
-        label="📥 Download Quiz + Answer Key (PDF)",
-        data=pdf_buffer,
-        file_name=f"{source_name.replace(' ', '_')}_quiz.pdf",
-        mime="application/pdf"
-    )
-        for i, q in enumerate(questions, start=1):
-            st.markdown(f"**Q{i}. {q['question']}**")
-
-            if "options" in q:
-                for letter, opt in q["options"].items():
-                    st.write(f"{letter}) {opt}")
-                with st.expander(f"Show answer — Q{i}"):
-                    st.write(f"**Answer:** {q['correct_answer']}")
-                    st.write(q.get("explanation", ""))
-            else:
-                with st.expander(f"Show model answer — Q{i}"):
-                    st.write(q["model_answer"])
-
-            st.caption(f"📚 Source: {q['source_label']}")
-            st.write("---")
-
-# --- PAGE 4: DOCUMENT AGENT ---
 elif page == "Draft Document":
     st.header("📋 Document Agent")
     st.write("Pick a template and fill in the details — no need to write full sentences.")
@@ -317,62 +268,3 @@ elif page == "Activity Log":
     st.header("Activity Log")
     st.caption("Recorded actions and timestamps only. Raw details, questions, student records and document contents are not displayed.")
     render_activity(get_activity_view(limit=20))
-
-
-elif page == "Question Paper":
-    st.header("📃 Question Paper Generator")
-    st.write("Configure a full test with marks distribution — mirrors how a real exam is assembled.")
-
-    source_name = st.text_input("Source material:", value="PCA", key="qp_source")
-    course_filter = st.text_input("Course (optional):", value="", key="qp_course")
-    difficulty = st.selectbox("Overall difficulty:", ["Easy", "Medium", "Hard"], key="qp_difficulty")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        num_mcq = st.number_input("Number of MCQs:", min_value=0, max_value=20, value=5)
-        marks_per_mcq = st.number_input("Marks per MCQ:", min_value=1, max_value=10, value=2)
-    with col2:
-        num_descriptive = st.number_input("Number of descriptive questions:", min_value=0, max_value=10, value=2)
-        marks_per_descriptive = st.number_input("Marks per descriptive:", min_value=1, max_value=20, value=5)
-
-    if st.button("Generate Question Paper"):
-        with st.spinner("Assembling question paper..."):
-            course_arg = course_filter if course_filter.strip() else None
-            paper = call_ai(generate_question_paper,
-                source_name=source_name,
-                course=course_arg,
-                num_mcq=num_mcq,
-                num_descriptive=num_descriptive,
-                marks_per_mcq=marks_per_mcq,
-                marks_per_descriptive=marks_per_descriptive,
-                difficulty=difficulty
-            )
-        st.session_state["question_paper"] = paper
-        log_activity("generate_question_paper", f"{num_mcq} MCQ + {num_descriptive} descriptive, {paper['total_marks']} total marks")
-
-    if "question_paper" in st.session_state:
-        paper = st.session_state["question_paper"]
-
-        st.success(f"✅ Total Marks: {paper['total_marks']}")
-
-        pdf_buffer = generate_question_paper_pdf_bytes(paper, title=f"{source_name} — Question Paper")
-        st.download_button(
-            label="📥 Download Question Paper (PDF)",
-            data=pdf_buffer,
-            file_name=f"{source_name.replace(' ', '_')}_paper.pdf",
-            mime="application/pdf"
-        )
-
-        if paper["mcq_section"]:
-            st.subheader("Section A: MCQs")
-            for i, q in enumerate(paper["mcq_section"], start=1):
-                st.markdown(f"**Q{i}. [{q['marks']} marks] {q['question']}**")
-                for letter, opt in q["options"].items():
-                    st.write(f"{letter}) {opt}")
-                st.caption(f"📚 Source: {q['source_label']}")
-
-        if paper["descriptive_section"]:
-            st.subheader("Section B: Descriptive")
-            for i, q in enumerate(paper["descriptive_section"], start=1):
-                st.markdown(f"**Q{i}. [{q['marks']} marks] {q['question']}**")
-                st.caption(f"📚 Source: {q['source_label']}")

@@ -6,6 +6,7 @@ import db
 
 # Only known actions are displayed; arbitrary log text may contain private data.
 ACTIONS = {
+    'assessment_generated': 'Assessment generated',
     'material_uploaded': 'Material uploaded',
     'material_hierarchy_updated': 'Material hierarchy updated',
     'material_deleted': 'Material deleted',
@@ -15,12 +16,11 @@ ACTIONS = {
     'personalized_practice': 'Practice batch generated',
     'generate_document': 'Document generated',
 }
-PAGES = ('Professor Dashboard', 'Upload Content', 'Ask a Question', 'Generate Quiz',
-         'Question Paper', 'Draft Document', 'Analytics', 'Activity Log')
+PAGES = ('Professor Dashboard', 'Upload Content', 'Ask a Question', 'Assessment Studio', 'Draft Document', 'Analytics', 'Activity Log')
 QUICK_ACTIONS = {
     'Upload Content': 'Upload Content',
     'Ask Knowledge Base': 'Ask a Question',
-    'Create Assessment': 'Generate Quiz',
+    'Create Assessment': 'Assessment Studio',
     'Draft Document': 'Draft Document',
     'Analyze Students': 'Analytics',
     'View Activity': 'Activity Log',

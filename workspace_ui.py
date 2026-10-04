@@ -77,7 +77,7 @@ def render_assistant(*, call_ai, classify_intent, answer_question, generate_ques
     columns = st.columns(3)
     for position, (label, target) in enumerate(QUICK_ACTIONS.items()):
         columns[position % 3].button(label, on_click=navigate_to, args=(target,), key=f"quick_{target}")
-    st.caption("Create Assessment opens the current Generate Quiz workflow. Question Paper remains available in the sidebar until Assessment Studio is introduced.")
+    st.caption("Create Assessment opens Assessment Studio for Quiz or Question Paper generation.")
 
     user_input = st.text_area(
         "What do you need?", key="dashboard_assistant_request",

@@ -153,3 +153,33 @@ Professor Dashboard groups Overview, Smart Assistant / Quick Actions, Academic K
 Smart Assistant retains the existing coordinator and dispatch behavior, including quiz_and_notice. Create Assessment temporarily opens Generate Quiz; Question Paper remains available separately. Old navigation states map to the dashboard or Activity Log. Activity Log shows only sanitized known actions and parsed timestamps, never stored details or arbitrary action text. Eight navigation pages remain.
 
 Workspace tests use temporary SQLite/uploads and deterministic vector substitutes. AI is mocked. No production storage migration, re-embedding, provider/model, retrieval, analytics, or assessment behavior changes are introduced.
+
+
+## Build 8: Unified Assessment Studio
+
+Assessment Studio replaces Generate Quiz and Question Paper navigation with one Quiz/Question Paper workspace. Dashboard Create Assessment opens it. Old navigation states map to Studio; Analytics and Smart Assistant retain their existing internal quiz APIs, including quiz_and_notice. Those legacy generation paths are compatibility paths, not the new validated Studio workflow.
+
+`assessment_spec.py` owns immutable academic scope, exact question-type/difficulty/six-level Bloom counts, positive integer marks and deterministic question slots. Marks use quotient/remainder allocation, with extra marks assigned to earliest slots. Counts are limited to 100 questions and 10,000 marks. Scope requires actual Course/Semester/Subject and one or more Units; optional canonical material UUIDs narrow it further. No IDs/hierarchy are invented for legacy material.
+
+`assessment_studio.py` composes exact RAG v2 queries per Unit/material using unchanged K15/final5/cosine/.65 defaults. Results are interleaved deterministically, scope-checked again, and deduplicated across branches. Every selected Unit/material must retain evidence; missing coverage fails closed before generation. Context limits (64 branches, 100 chunks, 60,000 teaching-text characters) fail explicitly rather than silently dropping scope. A query topic is configurable. No reranker, embedding changes or production vector migration occurs.
+
+The model supplies content in strict JSON for the predetermined slots through ai_provider. Validation rejects prose/fences, duplicate object keys/question text/numbers, missing/extra fields, invalid labels, mismatched counts/slots/marks, malformed MCQs, descriptive MCQ structure and invented evidence references. Exactly one generation attempt is made; malformed output requires explicit regeneration. Structural validation cannot establish factual correctness, semantic difficulty or Bloom alignment: professor review remains required. Provenance comes from retrieval metadata, never model filenames/pages.
+
+`assessment_pyq.py` accepts PDF/PNG/JPG/JPEG through existing local extraction/OCR and upload limits. Task-owned temporary directories are cleaned on success/failure; no course registration, SQLite inserts or Chroma ingestion occurs. Up to 20,000 characters provide style guidance, separate from academic authority. Normalized verbatim wording is rejected, but this is not a semantic plagiarism detector or reliable frequency analysis. No cloud OCR is introduced.
+
+`assessment_export.py` produces separate in-memory student papers and professor answer keys in PDF/DOCX. Papers omit answers and retrieval metadata. Descriptive keys are explicitly suggested answers. PDFs use the installed FPDF dependency and a local font covering the text; Arial Unicode (macOS) or DejaVu Sans (Linux) is discovered, or EDUAGENT_ASSESSMENT_FONT selects a local Unicode TTF. Missing glyph coverage fails visibly instead of dropping text. No font/model download occurs. Complex-script shaping and DOCX rendering may vary across viewers.
+
+`assessment_ui.py` owns cascading selectors, counts, plan preview, optional PYQ upload, structured review, distribution summary and separate downloads. Invalid specs disable generation. Changed configuration/PYQ hides stale downloads. A generic assessment_generated activity event contains no paper, answer, prompt or PYQ data. Log failure warns without discarding a validated result. Assessment results persist only in the Streamlit session.
+
+All assessment tests use synthetic data, deterministic collections, temporary storage and mocked AI. Original eduagent.db/chroma_db/uploads must remain unchanged. Seven resulting pages are Professor Dashboard, Upload Content, Ask a Question, Assessment Studio, Draft Document, Analytics and Activity Log.
+
+
+## Build 8 storage import safety
+
+Importing vector_store or feature agents no longer initializes Chroma, opens a database, creates a collection, or initializes sentence-transformer embeddings. Explicit getters initialize and cache on first storage use: get_embedding_function(), get_chroma_client(path), and get_collection(path, client=..., embedding_function=...). Client/collection caches use absolute paths, so changing working directories does not reuse the wrong store. The embedding model remains all-MiniLM-L6-v2. Explicit production access may still write Chroma bookkeeping; lazy initialization does not make Chroma itself read-only.
+
+EDUAGENT_CHROMA_PATH selects alternate storage, defaulting to ./chroma_db. An explicit path overrides the environment. Vector APIs accept collection injection (bypassing both model and client initialization), and retrieval's existing collection injection remains supported. The RAG default path now calls get_collection() only on an actual retrieval request. Material IDs, exact deletion, ownership checks, hierarchy, ranking, and relevance defaults are unchanged.
+
+Before test-module imports, tests/conftest.py sets offline model flags, an isolated temporary Chroma path, and a temporary SQLite DB_PATH. A suite sentinel snapshots the repository-relative eduagent.db/uploads/chroma_db inventory and hashes before collection and checks them at session finish, failing the process on any difference. No user-specific hashes are hardcoded. Fresh subprocess tests replace client/model constructors with forbidden-call guards and import high-level modules against an isolated sentinel directory. This detects eager initialization despite Python module caching.
+
+The forensic inspection observed segments foreign-key declarations referencing collection while the actual table is collections. This existing third-party schema concern has not been migrated, repaired or changed. The current preserved chroma.sqlite3 hash is a safety-fix comparison point, not a replacement for the historical canonical baseline. Production logical sanity must be inspected using SQLite mode=ro rather than initializing Chroma.

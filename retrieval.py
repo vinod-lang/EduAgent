@@ -189,7 +189,8 @@ def retrieve_evidence(query, filters=None, *, candidate_k=None, final_k=None, ma
         raise RetrievalError(str(exc)) from exc
     try:
         if collection is None:
-            from vector_store import collection
+            from vector_store import get_collection
+            collection = get_collection()
         metric = collection_metric(collection)
         if metric != 'cosine':
             raise RetrievalError(f'RAG v2 requires cosine distance; this collection uses {metric}. No index was changed.')
