@@ -1,5 +1,5 @@
 """Strict immutable assistant plans. Status and confirmation belong to local policy."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import re
 import uuid
@@ -8,6 +8,9 @@ MAX_ACTIONS=5
 ACTION_TYPES=('ASK_KNOWLEDGE','CREATE_ASSESSMENT','CREATE_DOCUMENT','ANALYZE_STUDENTS','NAVIGATE')
 
 class PlanError(ValueError):
+    pass
+
+class UnsupportedPlanError(PlanError):
     pass
 
 
@@ -52,6 +55,7 @@ class ActionPlan:
     original_request:str
     actions:tuple
     unsupported:bool=False
+    provenance:object=field(default=None,compare=False,repr=False)
 
     def __post_init__(self):
         try:uuid.UUID(self.plan_id)

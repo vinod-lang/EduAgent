@@ -2,6 +2,8 @@
 import hashlib
 import streamlit as st
 import db
+from generation_ui import render_diagnostic
+from generation_diagnostics import from_error,validated
 from dashboard import natural_key
 from assessment_spec import AssessmentScope,AssessmentSpec,AssessmentError,TYPES,DIFFICULTIES,BLOOMS
 from assessment_studio import generate_assessment
@@ -86,7 +88,7 @@ def render_assessment_studio():
                 except Exception:
                     st.warning('Assessment validated, but the activity event could not be recorded.')
             except (AssessmentError,AIProviderError,RetrievalError) as exc:
-                st.error(str(exc))
+                render_diagnostic(from_error(exc))
     stored=st.session_state.get('assessment_result')
     if not stored:return
     result,generated_fingerprint=stored
@@ -97,6 +99,7 @@ def render_assessment_studio():
 
 def render_assessment_result(result, key_prefix="assessment_studio"):
     spec=result.spec
+    render_diagnostic(validated(result.provenance))
     st.success('Assessment structure validated. Review academic accuracy, difficulty and Bloom alignment before use.')
     st.subheader('Validation summary')
     summary=result.validation_summary
@@ -104,6 +107,7 @@ def render_assessment_result(result, key_prefix="assessment_studio"):
     for key,expected in [('question_types',spec.question_types),('difficulties',spec.difficulties),('blooms',spec.blooms)]:
         checks.extend(dict(Check=label,Actual=summary[key].get(label,0),Requested=count) for label,count in expected.items())
     st.dataframe(checks,hide_index=True)
+    st.caption('Requested distributions and marks satisfied; evidence references and MCQ structure validated. Academic review is still required.')
     st.subheader('Professor review')
     for q in result.questions:
         st.markdown(f'**Q{q.question_number}. [{q.marks} marks] {q.question_text}**')

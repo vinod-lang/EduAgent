@@ -2,7 +2,7 @@
 import json
 import re
 import ai_provider
-from assistant_models import PlanError,parse_plan
+from assistant_models import PlanError,UnsupportedPlanError,parse_plan
 from assistant_services import ExecutionContext,validate_plan
 
 SYSTEM='''You plan a local academic assistant. Return ONLY strict JSON with exactly actions (array) and unsupported (boolean).
@@ -34,10 +34,10 @@ def plan_request(request,context=None, *, retry=False):
             for column in ('student_name','student_id'):
                 if column in dataset.frame:
                     for value in dataset.frame[column].dropna().astype(str):
-                        if value.strip() and re.search(r'(?<!\w)'+re.escape(value.strip().casefold())+r'(?!\w)',text):raise PlanError('Student-identifying requests cannot be sent to AI; use Student Data Hub local filters.')
+                        if value.strip() and re.search(r'(?<!\w)'+re.escape(value.strip().casefold())+r'(?!\w)',text):raise UnsupportedPlanError('Student-identifying requests cannot be sent to AI; use Student Data Hub local filters.')
         if re.search(r'\b(marks|attendance)\b',text) or (re.search(r'\b(student|students)\b',text) and not re.search(r'\b(quiz|assessment|exam|announcement|notice)\b',text)):
-            raise PlanError('This student operation is unsupported. Use local Student Data Hub filters; personalized AI messages are not enabled.')
-        if re.search(r'\b(personalized|each weak student|send each|student advice)\b',text):raise PlanError('Personalized student AI content is unsupported.')
+            raise UnsupportedPlanError('This student operation is unsupported. Use local Student Data Hub filters; personalized AI messages are not enabled.')
+        if re.search(r'\b(personalized|each weak student|send each|student advice)\b',text):raise UnsupportedPlanError('Personalized student AI content is unsupported.')
         from structured_generation import generate_structured
         from structured_contracts import planner_schema
         def validate(raw):
@@ -45,7 +45,8 @@ def plan_request(request,context=None, *, retry=False):
             validate_plan(plan,context)
             return plan
         result=generate_structured([{'role':'system','content':SYSTEM},{'role':'user','content':json.dumps({'request':request,'context':context.planner_metadata()})}],planner_schema(),validate,retry=retry,maximum=30000,semantic_schema=True)
-        return result.require(PlanError,'assistant plan')
+        from generation_diagnostics import annotate
+        return annotate(result.require(PlanError,'assistant plan'),'assistant plan',result.attempt_count)
     plan=parse_plan(raw,request)
     validate_plan(plan,context)
     return plan

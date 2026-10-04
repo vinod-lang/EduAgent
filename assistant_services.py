@@ -92,7 +92,7 @@ def dispatch(action,prepared,context,previous):
         import json
         from assessment_studio import validate_output
         rows=[dict(question_number=q.question_number,question_type=q.question_type,question_text=q.question_text,options=dict(q.options),correct_answer=q.correct_answer,model_answer=q.model_answer,difficulty=q.difficulty,bloom_level=q.bloom_level,marks=q.marks,evidence_ids=list(q.evidence_ids)) for q in payload.questions]
-        payload=validate_output(json.dumps({'questions':rows}),prepared,payload.evidence)
+        payload=replace(validate_output(json.dumps({'questions':rows}),prepared,payload.evidence),provenance=payload.provenance)
     elif action.action_type=='CREATE_DOCUMENT':
         import json
         from document_studio import generate_draft
@@ -101,7 +101,9 @@ def dispatch(action,prepared,context,previous):
         payload=generate_draft(prepared)
         if not isinstance(payload,DocumentDraft) or payload.document_type!=prepared.document_type:raise PlanError('Document service returned an invalid contract.')
         from document_models import parse_draft
-        payload=parse_draft(payload.to_json(),prepared)
+        from document_facts import enforce
+        enforce(payload,payload.fact_expectations)
+        payload=replace(parse_draft(payload.to_json(),prepared),provenance=payload.provenance,fact_expectations=payload.fact_expectations)
     elif action.action_type=='ANALYZE_STUDENTS':
         from student_hub import analyze_dataset,filter_students
         result,summary=analyze_dataset(context.student_dataset,prepared[1])

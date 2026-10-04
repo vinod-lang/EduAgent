@@ -1,5 +1,5 @@
 """Validated content and session versions; no storage or model work at import."""
-from dataclasses import dataclass, replace, asdict
+from dataclasses import dataclass, replace, field
 import json
 
 class DocumentError(ValueError):
@@ -72,6 +72,8 @@ class DocumentDraft:
     body: tuple = ()
     closing: str = ''
     signature: str = ''
+    provenance: object = field(default=None,compare=False,repr=False)
+    fact_expectations: tuple = field(default=(),compare=False,repr=False)
 
     def __post_init__(self):
         if not isinstance(self.document_type,str) or self.document_type not in CATALOG: raise DocumentError('Unsupported document type.')
@@ -85,7 +87,7 @@ class DocumentDraft:
         if style in ('announcement','memo','report') and (self.salutation or self.closing):
             raise DocumentError('This document type does not use a letter salutation or closing.')
 
-    def to_dict(self): return asdict(self)
+    def to_dict(self): return {k:getattr(self,k) for k in ('document_type',*FIELDS,'body')}
     def to_json(self): return json.dumps(self.to_dict(),ensure_ascii=False)
 
 
@@ -110,6 +112,8 @@ def parse_draft(raw,request=None):
             if getattr(request,key) and getattr(draft,key)!=getattr(request,key): raise DocumentError(f'AI changed supplied {key}.')
     return draft
 
+_PROVENANCE_UNSET=object()
+
 VERSION_SOURCES=('generated','professor_edit','ai_refinement','restored','legacy_current')
 
 @dataclass(frozen=True)
@@ -121,6 +125,8 @@ class DocumentVersions:
     sources: tuple = ()
     restored_from: tuple = ()
     timestamps: tuple = ()
+    expectation_snapshots: tuple = ()
+    provenance_snapshots: tuple = ()
 
     def __post_init__(self):
         import uuid
@@ -128,6 +134,15 @@ class DocumentVersions:
         if not isinstance(self.original,DocumentDraft) or self.template_id!='standard_academic' or not isinstance(self.history,tuple) or not self.history or self.history[0]!=self.original or not all(isinstance(d,DocumentDraft) and d.document_type==self.original.document_type for d in self.history):
             raise DocumentError('Invalid document version history.')
         count=len(self.history)
+        from document_facts import check_expectations,enforce
+        if not self.expectation_snapshots:object.__setattr__(self,'expectation_snapshots',tuple(d.fact_expectations for d in self.history))
+        if not self.provenance_snapshots:object.__setattr__(self,'provenance_snapshots',tuple(d.provenance for d in self.history))
+        if not isinstance(self.expectation_snapshots,tuple) or not isinstance(self.provenance_snapshots,tuple) or len(self.expectation_snapshots)!=count or len(self.provenance_snapshots)!=count:raise DocumentError('Version reliability metadata does not match history.')
+        for draft,expectations in zip(self.history,self.expectation_snapshots):
+            check_expectations(expectations);enforce(draft,expectations)
+        from generation_diagnostics import GenerationProvenance
+        if any(v is not None and not isinstance(v,GenerationProvenance) for v in self.provenance_snapshots):raise DocumentError('Invalid version generation provenance.')
+        object.__setattr__(self,'history',tuple(replace(d,fact_expectations=facts,provenance=prov) for d,facts,prov in zip(self.history,self.expectation_snapshots,self.provenance_snapshots)))
         defaults={'version_ids':tuple(str(uuid.uuid4()) for _ in self.history),'sources':('generated',)+('professor_edit',)*(count-1),'restored_from':(None,)*count,'timestamps':(datetime.now(timezone.utc).isoformat(),)*count}
         for key,default in defaults.items():
             if not getattr(self,key):object.__setattr__(self,key,default)
@@ -143,14 +158,20 @@ class DocumentVersions:
     def generated(cls,draft,template_id='standard_academic'):return cls(draft,(draft,),template_id)
     @property
     def current(self):return self.history[-1]
-    def update(self,draft,source='professor_edit',restored_from=None):
+    def update(self,draft,source='professor_edit',restored_from=None, *, expectations=None, provenance=_PROVENANCE_UNSET):
         import uuid
         from datetime import datetime,timezone
         if not isinstance(draft,DocumentDraft) or draft.document_type!=self.original.document_type:raise DocumentError('Editing cannot change document type.')
         if source not in ('professor_edit','ai_refinement','restored'):raise DocumentError('Invalid update source.')
-        if draft==self.current and source!='restored':return self
-        return replace(self,history=self.history+(draft,),version_ids=self.version_ids+(str(uuid.uuid4()),),sources=self.sources+(source,),restored_from=self.restored_from+(restored_from,),timestamps=self.timestamps+(datetime.now(timezone.utc).isoformat(),))
+        from document_facts import enforce,check_expectations
+        expectations=self.expectation_snapshots[-1] if expectations is None else check_expectations(expectations)
+        enforce(draft,expectations)
+        if provenance is _PROVENANCE_UNSET:
+            provenance=draft.provenance if source=='ai_refinement' else self.provenance_snapshots[-1]
+            if provenance is not None and source=='professor_edit' and draft!=self.current:provenance=replace(provenance,professor_edited=True)
+        if draft==self.current and expectations==self.expectation_snapshots[-1] and source=='professor_edit':return self
+        return replace(self,history=self.history+(draft,),version_ids=self.version_ids+(str(uuid.uuid4()),),sources=self.sources+(source,),restored_from=self.restored_from+(restored_from,),timestamps=self.timestamps+(datetime.now(timezone.utc).isoformat(),),expectation_snapshots=self.expectation_snapshots+(expectations,),provenance_snapshots=self.provenance_snapshots+(provenance,))
     def restore(self,index):
         if type(index) is not int or not 0<=index<len(self.history):raise DocumentError('Invalid historical version.')
-        return self.update(self.history[index],'restored',self.version_ids[index])
+        return self.update(self.history[index],'restored',self.version_ids[index],expectations=self.expectation_snapshots[index],provenance=self.provenance_snapshots[index])
     def undo(self):return self.restore(len(self.history)-2) if len(self.history)>1 else self

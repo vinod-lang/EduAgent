@@ -134,8 +134,13 @@ elif page == "Ask a Question":
             with st.spinner("Retrieving evidence and answering..."):
                 result = call_ai(answer_question, question, filters=scope)
             if result.retrieval_status == 'no_evidence':
+                from generation_ui import render_diagnostic
+                from generation_diagnostics import failed
+                from structured_generation import Failure
+                render_diagnostic(failed(Failure.INSUFFICIENT_EVIDENCE))
                 st.info(result.answer)
             else:
+                st.success("Grounded answer available. Review the answer against its sources.")
                 st.markdown("**Answer:**")
                 st.write(result.answer)
             if result.sources:

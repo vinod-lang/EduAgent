@@ -1,5 +1,8 @@
 """Session-only plan review and deterministic results. No final LLM summary."""
 import streamlit as st
+from generation_ui import render_diagnostic
+from generation_diagnostics import from_error,validated,clarification,failed
+from structured_generation import Failure
 from assistant_models import PlanError
 from assistant_planner import plan_request
 from assistant_services import ExecutionContext,validate_plan,execute_plan
@@ -65,19 +68,21 @@ def render_assistant(navigate_to):
                 with st.spinner('Planning only — no services execute yet...'):
                     plan=plan_request(request+('\n'+details if details.strip() else ''),context)
                 st.session_state['assistant_plan']=plan
-            except (PlanError,AIProviderError):st.error('Could not create a valid safe plan. Check the request and local Ollama availability; use a dedicated feature page if needed.')
+            except (PlanError,AIProviderError) as exc:render_diagnostic(from_error(exc))
     plan=st.session_state.get('assistant_plan')
     if plan is None:return
     if plan.unsupported:
-        st.info('Unsupported request. Use the dedicated pages; external actions and destructive tools are not available.');return
+        render_diagnostic(failed(Failure.UNSUPPORTED_OPERATION));return
     st.subheader('Plan preview')
     for index,action in enumerate(plan.execution_order,1):
         st.write(f'{index}. {action.action_type}')
         st.write(action.parameters)
         if action.depends_on:st.caption('Depends on: '+', '.join(action.depends_on)+' (assessment title/type/count only)')
     try:missing=validate_plan(plan,context)
-    except PlanError:
-        st.error('Plan parameters are invalid. Correct the request and Submit again.');return
+    except PlanError as exc:
+        render_diagnostic(from_error(exc));return
+    if missing:render_diagnostic(clarification())
+    else:render_diagnostic(validated(plan.provenance))
     for item in missing:st.warning(item.action_id+' needs: '+', '.join(item.missing_fields)+'. Add details above and Submit again.')
     report=st.session_state.get('assistant_report')
     current=request+('\n'+details if details.strip() else '')

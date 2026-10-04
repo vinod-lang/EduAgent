@@ -1,5 +1,5 @@
 """One grounded, strictly validated assessment pipeline; no persistence or retries."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections import Counter
 import json
 import re
@@ -27,6 +27,7 @@ class AssessmentResult:
     spec:AssessmentSpec
     questions:tuple[GeneratedQuestion,...]
     evidence:tuple
+    provenance:object=field(default=None,compare=False,repr=False)
 
     @property
     def validation_summary(self):
@@ -137,4 +138,5 @@ def generate_assessment(spec, *, pyq_text='', collection=None, retry=False):
     from structured_generation import generate_structured
     from structured_contracts import assessment_schema
     result=generate_structured([dict(role='system',content=system),dict(role='user',content=json.dumps(payload,ensure_ascii=False))],assessment_schema(spec,evidence),lambda raw:validate_output(raw,spec,evidence,pyq_text=pyq_text),retry=retry)
-    return result.require(AssessmentError,'assessment')
+    from generation_diagnostics import annotate
+    return annotate(result.require(AssessmentError,'assessment'),'assessment',result.attempt_count,grounded=True)

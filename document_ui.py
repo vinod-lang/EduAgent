@@ -1,6 +1,11 @@
 """Document Studio: explicit session edits, versions, save actions and current exports."""
 import streamlit as st
 import db
+from dataclasses import replace
+from generation_ui import render_diagnostic
+from generation_diagnostics import from_error,validated
+from document_facts import DocumentFactConflict
+from document_facts_ui import render_fact_conflict,render_confirmed_facts
 from ai_provider import AIProviderError
 from document_models import CATALOG,TONES,FIELDS,DocumentRequest,DocumentDraft,DocumentVersions,DocumentError
 from document_studio import generate_draft,refine_draft
@@ -16,6 +21,7 @@ def _activity(action):
 
 
 def _set_editor(versions):
+    st.session_state.pop('studio_fact_conflict',None)
     st.session_state['studio_versions']=versions
     for field in FIELDS:st.session_state['studio_edit_'+field]=getattr(versions.current,field)
     st.session_state['studio_edit_body']='\n\n'.join(versions.current.body)
@@ -44,7 +50,7 @@ def render_document_studio():
             _set_editor(DocumentVersions.generated(draft,template))
             st.session_state.pop('studio_saved_id',None)
             _activity('document_generated')
-        except (DocumentError,AIProviderError) as exc:st.error(str(exc))
+        except (DocumentError,AIProviderError) as exc:render_diagnostic(from_error(exc))
     try:
         saved=list_drafts()
         if saved:
@@ -53,6 +59,7 @@ def render_document_studio():
                 selected=st.selectbox('Saved draft',list(identities),format_func=identities.__getitem__)
                 if st.button('Load saved draft'):
                     _set_editor(load_draft(selected));st.session_state['studio_saved_id']=selected
+                    st.session_state['studio_saved_version']=st.session_state['studio_versions'].version_ids[-1]
     except DocumentError as exc:st.error(str(exc))
     # Preserve a pre-existing plain-text session draft without inventing facts.
     if 'studio_versions' not in st.session_state and isinstance(st.session_state.get('document'),str) and st.session_state['document'].strip():
@@ -60,6 +67,12 @@ def render_document_studio():
     versions=st.session_state.get('studio_versions')
     if versions is None:
         st.info('Generate a document to review, edit, save and export it.');return
+    st.caption('Current applied document status')
+    render_diagnostic(validated(versions.provenance_snapshots[-1],saved=st.session_state.get('studio_saved_version')==versions.version_ids[-1])) if versions.provenance_snapshots[-1] else st.caption('Generation validation provenance unavailable for this legacy/local document.')
+    st.caption('Confirmed facts recorded: '+str(len(versions.expectation_snapshots[-1])))
+    if versions.provenance_snapshots[-1]:
+        provenance=versions.provenance_snapshots[-1]
+        st.caption('Approved preferences applied: '+('Yes' if provenance.preferences_applied else 'No')+' | Professor edited: '+('Yes' if provenance.professor_edited else 'No'))
     st.subheader('Professor editing')
     st.caption(f'Current version {len(versions.history)}. Editing takes effect on Apply edits; downloads use that applied version.')
     fields={}
@@ -76,7 +89,11 @@ def render_document_studio():
                 versions=versions.update(draft);st.session_state['studio_versions']=versions
                 st.session_state['document']='\n\n'.join(draft.body)
                 st.success('Edits applied to the current export version.')
+            except DocumentFactConflict:
+                st.session_state['studio_fact_conflict']=draft
             except DocumentError as exc:st.error(str(exc))
+    render_fact_conflict(versions)
+    render_confirmed_facts(versions)
     if st.button('Undo last version',disabled=len(versions.history)<2):
         st.session_state['studio_pending_versions']=versions.undo();st.rerun()
     with st.expander('Original generated draft'):
@@ -84,13 +101,14 @@ def render_document_studio():
     refinement=st.text_input('Refinement instruction',key='studio_refinement')
     if st.button('Refine current document',disabled=not refinement.strip()):
         try:
-            with st.spinner('Refining the applied current version...'):draft=refine_draft(versions.current,refinement)
+            with st.spinner('Refining the applied current version...'):draft=refine_draft(replace(versions.current,fact_expectations=versions.expectation_snapshots[-1]),refinement)
             st.session_state['studio_pending_versions']=versions.update(draft,'ai_refinement');st.rerun()
-        except (DocumentError,AIProviderError) as exc:st.error(str(exc))
+        except (DocumentError,AIProviderError) as exc:render_diagnostic(from_error(exc))
     status=st.selectbox('Save status',['Draft','Final'])
     if st.button('Update Draft' if st.session_state.get('studio_saved_id') else 'Save Draft'):
         try:
             st.session_state['studio_saved_id']=save_draft(versions,st.session_state.get('studio_saved_id'),status)
+            st.session_state['studio_saved_version']=versions.version_ids[-1]
             st.session_state['studio_save_message']='Current draft saved locally. Document content is excluded from Activity Log.'
             st.rerun()
         except DocumentError as exc:st.error(str(exc))

@@ -312,3 +312,54 @@ unsupported provider configurations still fail centrally. Runtime-specific suppo
 for the full JSON Schema grammar (including tuple slots) was not live-tested in
 Build 15. Unsupported grammar fails visibly; no model-specific workaround exists.
 No model router, production model/default/RAG/embedding change or live inference.
+
+
+## Build 16 — professor validation and document fact continuity
+
+`generation_diagnostics` defines typed safe failures, validation statuses and
+technical provenance. `generation_ui` is the reusable workflow renderer.
+Expected generation failures retain their existing public exception classes and
+carry a safe diagnostic (category/attempt count, no raw payload). No schema,
+provider internals, paths, tracebacks, rejected text or private facts are rendered.
+Validation means contract acceptance, not factual accuracy. Success remains
+subject to professor review. Assessment summaries present the existing validator
+results. Planner clarification/refusal and execution partial failures remain distinct.
+RAG still uses its original evidence gate; Student Data Hub remains deterministic.
+No new Activity Log payloads or generation-status events were added.
+
+Document facts originate only from nonempty explicit structured request fields,
+explicit caller-designated body facts, or explicit professor fact management.
+`DocumentFactExpectation` records identity, field, source, value, required state,
+and confirmation timestamp. No free-text prose is promoted automatically.
+Body constraints are literal phrases with whitespace normalization and numeric/word
+boundaries; this is not semantic equivalence or comprehensive hallucination detection.
+
+Each `DocumentVersions` snapshot owns its fact tuple and generation provenance.
+Edits that conflict are held in session for explicit resolution; current preview,
+downloads and storage retain the previous valid version. Professors may explicitly
+update confirmed facts and apply the edit, or retain constraints and revise the edit.
+Changed body facts require explicitly entered replacement phrases. Removing a fact
+is an explicit action; its prior snapshots remain auditable. Matching fact management
+creates a new version even if document content is unchanged. Fact updates are never
+silent document corrections. Refinement receives protected facts and revalidates
+before adoption, even when the instruction requests an explicit change. Change the
+confirmed fact via professor editing first. Restore pairs historical content with
+that historical version's expectations/provenance, creating a new restore version.
+
+Explicit Save/Update atomically writes additive `document_fact_expectations` and
+`document_generation_provenance` tables linked to `document_versions`. Initialization
+is idempotent and happens only at an explicit repository write. Loading legacy
+Build 9/10 histories does not migrate or infer historical facts. Saved snapshots
+cannot be overwritten. Provenance records configured provider/model, UTC time,
+attempts, validation status, grounding, preference application and professor editing;
+no raw prompts/responses are persisted as diagnostic metadata. Accepted document
+content continues to use the existing explicit-save repository.
+
+Fact values are private document metadata: they appear only in the professor's
+fact-management UI, document lifecycle storage and protected refinement constraints.
+They do not enter Activity Log, Chroma, benchmark datasets or exported content.
+Exports use the current applied document, without extra provenance/fact sections.
+Facts removed from current constraints remain in historical snapshots intentionally.
+Assessment/planner provenance is session-only because those workflows have no
+artifact persistence layer. No production LLM/embedding/RAG settings changed.
+No live inference is needed for Build 16 checks.

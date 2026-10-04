@@ -45,11 +45,15 @@ class StructuredGenerationResult(Generic[T]):
         if self.accepted:
             return self.value
         message = f'EduAgent could not produce a valid {feature} ({self.failure.value}). Review the request and try again. No result was saved.'
+        from generation_diagnostics import failed
         if self.connection_failure:
-            raise ai_provider.AIConnectionError(message)
-        if self.failure in (Failure.PROVIDER_ERROR, Failure.TIMEOUT):
-            raise ai_provider.AIProviderError(message)
-        raise error_type(message)
+            error=ai_provider.AIConnectionError(message)
+        elif self.failure in (Failure.PROVIDER_ERROR, Failure.TIMEOUT):
+            error=ai_provider.AIProviderError(message)
+        else:
+            error=error_type(message)
+        error.generation_diagnostic=failed(self.failure,self.attempt_count)
+        raise error
 
 
 def extract_object(raw, *, maximum=1000000):

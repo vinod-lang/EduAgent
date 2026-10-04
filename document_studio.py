@@ -43,12 +43,21 @@ def generate_draft(request, *, retry=False, required_body_facts=()):
             raise FactPreservationFailure()
         return draft
     result=generate_structured([{'role':'system','content':SYSTEM+boundary},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}],document_schema(request),validate,retry=retry,fact_fields=('document_type','recipient','sender','date','reference_number','signature','title','subject'))
-    return result.require(DocumentError,'document')
+    from dataclasses import replace
+    from document_facts import request_facts,enforce
+    from generation_diagnostics import annotate
+    draft=result.require(DocumentError,'document')
+    expectations=request_facts(request,facts)
+    enforce(draft,expectations)
+    return replace(annotate(draft,'document',result.attempt_count,preferences_applied=bool(payload['approved_style_guidance'])),fact_expectations=expectations)
 
 
-def refine_draft(current,instruction, *, retry=False):
+def refine_draft(current,instruction, *, retry=False, expectations=None):
     if not isinstance(current,DocumentDraft): raise DocumentError('A validated current draft is required.')
     instruction=clean(instruction,'Refinement instruction',20000,True)
+    from document_facts import check_expectations,enforce
+    expectations=current.fact_expectations if expectations is None else check_expectations(expectations)
+    enforce(current,expectations)
     refinement_system=SYSTEM.replace("recipient, sender, date, reference_number, signature must exactly match the optional request fields, even when empty.", "Recipient, sender, date, reference_number and signature come from the CURRENT draft; preserve them unless an explicit change is requested.")
     prompt=refinement_system+"\nRefine the supplied CURRENT draft. Preserve names, dates, amounts, references and event facts unless the professor explicitly requests changes. Retain unchanged optional fields exactly."
     from structured_generation import generate_structured, FactPreservationFailure
@@ -66,7 +75,11 @@ def refine_draft(current,instruction, *, retry=False):
             numbers=set(re.findall(r'\d+(?:[.,]\d+)*',current.to_json()))
             if not numbers<=set(re.findall(r'\d+(?:[.,]\d+)*',draft.to_json())):
                 raise FactPreservationFailure()
+        try:enforce(draft,expectations)
+        except DocumentError as exc:raise FactPreservationFailure() from exc
         return draft
     schema=response_schema(SimpleNamespace(category='document',expected=current))
-    result=generate_structured([{'role':'system','content':prompt},{'role':'user','content':json.dumps({'current':current.to_dict(),'instruction':instruction},ensure_ascii=False)}],schema,validate,retry=retry)
-    return result.require(DocumentError,'document refinement')
+    result=generate_structured([{'role':'system','content':prompt},{'role':'user','content':json.dumps({'current':current.to_dict(),'instruction':instruction,'protected_facts':[{'field':f.field,'value':f.value} for f in expectations if f.required]},ensure_ascii=False)}],schema,validate,retry=retry)
+    from dataclasses import replace
+    from generation_diagnostics import annotate
+    return replace(annotate(result.require(DocumentError,'document refinement'),'document refinement',result.attempt_count),fact_expectations=expectations)

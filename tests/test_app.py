@@ -61,4 +61,4 @@ def test_controlled_provider_failure(app,agents,monkeypatch):
     app.text_area[0].set_value('Synthetic request')
     next(b for b in app.button if b.label=='Submit').click().run()
     assert not app.exception
-    assert any('Ollama availability' in item.value for item in app.error)
+    assert any('local AI service' in item.value for item in app.error)
