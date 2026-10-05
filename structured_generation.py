@@ -36,6 +36,8 @@ class StructuredGenerationResult(Generic[T]):
     first_failure: Failure | None
     responses: tuple[ResponseMetadata, ...] = ()
     connection_failure: bool = False
+    normalization_applied: bool = False
+    normalization_type: str | None = None
 
     @property
     def accepted(self):
@@ -80,7 +82,7 @@ def extract_object(raw, *, maximum=1000000):
 
 
 def generate_structured(messages, schema, validator, *, retry=False, maximum=1000000,
-                        semantic_schema=False, fact_fields=()):
+                        semantic_schema=False, fact_fields=(), normalizer=None):
     """One attempt by default; optional second attempt for syntax/shape only.
 
     No raw responses, prompts, facts, validation traces or exception details are
@@ -92,6 +94,9 @@ def generate_structured(messages, schema, validator, *, retry=False, maximum=100
     Draft202012Validator.check_schema(schema)
     checker = Draft202012Validator(schema)
     history = []
+    normalization_applied=False
+    normalization_type=None
+    ai_provider.clear_generation_selection()
     first = None
     current = [dict(message) for message in messages]
     for attempt in range(1, 3 if retry else 2):
@@ -112,6 +117,14 @@ def generate_structured(messages, schema, validator, *, retry=False, maximum=100
         except (ValueError, TypeError, RecursionError):
             failure = Failure.INVALID_JSON
         else:
+            if normalizer is not None:
+                try:
+                    normalized=normalizer(data)
+                except ValueError:
+                    return StructuredGenerationResult(None,Failure.PRODUCT_VALIDATION_FAILED,attempt,first or Failure.PRODUCT_VALIDATION_FAILED,tuple(history))
+                data=normalized.data
+                normalization_applied=normalization_applied or normalized.applied
+                normalization_type=normalized.normalization_type or normalization_type
             errors = list(checker.iter_errors(data))
             if errors:
                 # Changed values/counts/enums are semantic, not repairable shape.
@@ -126,8 +139,8 @@ def generate_structured(messages, schema, validator, *, retry=False, maximum=100
                 except ValueError:
                     failure = Failure.PRODUCT_VALIDATION_FAILED
                 else:
-                    return StructuredGenerationResult(value, None, attempt, first, tuple(history))
+                    return StructuredGenerationResult(value, None, attempt, first, tuple(history),False,normalization_applied,normalization_type)
         first = first or failure
         if not retry or attempt == 2 or failure not in (Failure.INVALID_JSON, Failure.SCHEMA_INVALID):
-            return StructuredGenerationResult(None, failure, attempt, first, tuple(history), connection)
+            return StructuredGenerationResult(None, failure, attempt, first, tuple(history), connection,normalization_applied,normalization_type)
         current = current + [{'role':'user','content':'Previous output did not match the required schema. Return one JSON object matching this contract.'}]

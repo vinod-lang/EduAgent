@@ -1,7 +1,5 @@
 """Separate student paper and suggested answer key; exports stay in memory."""
 import io
-import os
-from pathlib import Path
 from assessment_spec import AssessmentError
 
 class AssessmentExportError(AssessmentError):
@@ -33,18 +31,9 @@ def export_blocks(result,answer_key=False):
 
 
 def _font(text):
-    from fontTools.ttLib import TTFont
-    override=os.environ.get('EDUAGENT_ASSESSMENT_FONT')
-    candidates=[Path(override)] if override else [Path('/System/Library/Fonts/Supplemental/Arial Unicode.ttf'),Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')]
-    for path in candidates:
-        if not path.is_file():continue
-        try:
-            with TTFont(path,lazy=True) as font:
-                glyphs=font.getBestCmap() or {}
-                if all(c.isspace() or ord(c) in glyphs for c in text):return str(path)
-        except Exception:
-            continue
-    raise AssessmentExportError('No available assessment font covers this text. Set EDUAGENT_ASSESSMENT_FONT to a suitable local Unicode TTF font; no text was silently dropped.')
+    from font_resolver import resolve_pdf_font,FontResolutionError
+    try:return resolve_pdf_font(text,purpose='assessment')
+    except FontResolutionError as exc:raise AssessmentExportError(str(exc)) from exc
 
 
 def assessment_pdf_bytes(result,*,answer_key=False):

@@ -363,3 +363,61 @@ Facts removed from current constraints remain in historical snapshots intentiona
 Assessment/planner provenance is session-only because those workflows have no
 artifact persistence layer. No production LLM/embedding/RAG settings changed.
 No live inference is needed for Build 16 checks.
+
+## Build 17 — evaluated AI profile and portable exports
+
+The centralized production profile now prefers `qwen2.5:3b`, with explicitly
+configured `llama3.2:3b` fallback. Embeddings remain `all-MiniLM-L6-v2`;
+dense retrieval uses candidate K 15, final K 5 and cosine-distance cutoff 0.50.
+Reranking and model routing remain disabled. This recommendation follows the
+user-supplied October 2026 Linux RTX 3050 evaluation; Build 17 does not rerun
+benchmarks. The cutoff was evaluated with synthetic inputs and is not a universal
+quality guarantee. Validate it against an approved real NIT course corpus before
+claiming institutional retrieval quality. Historical benchmark artifacts are unchanged.
+
+Configuration precedence:
+
+- `EDUAGENT_LLM_PREFERRED_MODEL` overrides legacy `EDUAGENT_LLM_MODEL`, then the
+  centralized Qwen default applies.
+- `EDUAGENT_LLM_FALLBACK_MODEL` defaults to Llama; `none` disables fallback.
+- `EDUAGENT_RAG_DISTANCE_THRESHOLD` overrides legacy `EDUAGENT_RAG_MAX_DISTANCE`.
+  Explicit retrieval arguments take precedence over environment values.
+- Existing provider URL/timeout and candidate/final K settings remain available.
+- `EDUAGENT_EMBEDDING_MODEL` only accepts the existing MiniLM identifier. Changing
+  embedding spaces requires a separately reviewed migration, which this build forbids.
+
+Rollback without source edits: set `EDUAGENT_LLM_PREFERRED_MODEL=llama3.2:3b`
+and `EDUAGENT_RAG_DISTANCE_THRESHOLD=0.65`. No `.env` file or secret is required.
+An unavailable preferred model uses only the configured, already installed fallback.
+If neither is installed, generation fails with an actionable controlled error.
+Model discovery calls Ollama's local inventory API: it never pulls, installs,
+downloads, executes shell commands or invokes cloud providers. Transport or generation
+failure does not trigger a second model call. Explicit per-call benchmark/model
+arguments remain exact overrides, with no automatic fallback. This is a single default
+model policy, not task-based routing. `get_ai_stack_status()` is an explicit inventory
+read, not generation; it reports the effective profile without paths or service URLs.
+Successful generation provenance records the effective model and fallback state.
+Legacy saved provenance without the new optional fields remains readable.
+
+Assessment normalization accepts only the equivalent four-single-key A/B/C/D
+option-list representation and converts it into the canonical option mapping.
+Missing, duplicate, unknown, nested or ambiguous options remain rejected. It does
+not fix question content, answers, distributions, evidence or malformed JSON.
+The unchanged schema and product validators remain the final acceptance authority.
+Only aggregate normalization flags/types are retained, not rejected raw output.
+The no-evidence gate still rejects insufficient retrieval before any model call.
+
+PDF exporters share `font_resolver`. `EDUAGENT_PDF_FONT` provides a local font path;
+existing `EDUAGENT_DOCUMENT_FONT` / `EDUAGENT_ASSESSMENT_FONT` overrides take
+precedence for their exporters. Explicit invalid overrides fail visibly rather than
+silently selecting another font. Without an override the resolver checks known
+macOS, Linux and Windows fonts and verifies coverage for the actual text.
+No font is downloaded or bundled. Future packaged DejaVu fonts require a reviewed
+redistribution license placed beside them; mere resolver support is not a license
+review. Missing fonts or unsupported glyphs produce a safe actionable export error.
+Cross-platform path selection is tested deterministically; actual deployment font
+availability still requires an on-machine check. Legacy compatibility exports keep
+their existing behavior and are not redesigned here.
+
+Production SQLite, upload and Chroma files are not migrated or reindexed. All new
+checks use isolated storage and mocked model boundaries, with no live inference.

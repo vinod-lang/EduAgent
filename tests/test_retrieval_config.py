@@ -4,12 +4,12 @@ from retrieval_config import get_retrieval_config, RetrievalConfig
 
 @pytest.fixture(autouse=True)
 def clean_config(monkeypatch):
-    for key in ('EDUAGENT_RAG_CANDIDATE_K', 'EDUAGENT_RAG_FINAL_K', 'EDUAGENT_RAG_MAX_DISTANCE'):
+    for key in ('EDUAGENT_RAG_DISTANCE_THRESHOLD', 'EDUAGENT_RAG_CANDIDATE_K', 'EDUAGENT_RAG_FINAL_K', 'EDUAGENT_RAG_MAX_DISTANCE'):
         monkeypatch.delenv(key, raising=False)
 
 
 def test_rag_defaults():
-    assert get_retrieval_config() == RetrievalConfig(15, 5, 0.65)
+    assert get_retrieval_config() == RetrievalConfig(15, 5, 0.50)
 
 
 def test_rag_overrides(monkeypatch):

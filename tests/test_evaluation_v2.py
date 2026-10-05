@@ -48,6 +48,7 @@ def test_schema_is_closed_object(cases,task):
 def test_provider_format_optin(monkeypatch):
     client=MagicMock();client.__enter__.return_value=client;client.chat.return_value={'message':{'content':'{}'}}
     monkeypatch.setattr(ai_provider.ollama,'Client',Mock(return_value=client))
+    client.list.return_value={'models':[{'model':ai_provider.get_default_model_name()}]}
     schema={'type':'object','properties':{}}
     ai_provider.generate_chat_measured([{'role':'user','content':'Synthetic'}],response_format=schema)
     assert client.chat.call_args.kwargs['format']==schema

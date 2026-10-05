@@ -137,6 +137,7 @@ def generate_assessment(spec, *, pyq_text='', collection=None, retry=False):
         pyq_style_guidance=pyq_text)
     from structured_generation import generate_structured
     from structured_contracts import assessment_schema
-    result=generate_structured([dict(role='system',content=system),dict(role='user',content=json.dumps(payload,ensure_ascii=False))],assessment_schema(spec,evidence),lambda raw:validate_output(raw,spec,evidence,pyq_text=pyq_text),retry=retry)
+    from assessment_normalization import normalize_assessment
+    result=generate_structured([dict(role='system',content=system),dict(role='user',content=json.dumps(payload,ensure_ascii=False))],assessment_schema(spec,evidence),lambda raw:validate_output(raw,spec,evidence,pyq_text=pyq_text),retry=retry,normalizer=normalize_assessment)
     from generation_diagnostics import annotate
-    return annotate(result.require(AssessmentError,'assessment'),'assessment',result.attempt_count,grounded=True)
+    return annotate(result.require(AssessmentError,'assessment'),'assessment',result.attempt_count,grounded=True,normalization_applied=result.normalization_applied,normalization_type=result.normalization_type)

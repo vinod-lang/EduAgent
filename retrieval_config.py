@@ -1,14 +1,13 @@
 """Independent RAG settings for the verified cosine-distance collection."""
 from dataclasses import dataclass
 import math
-import os
-from config import ConfigurationError
+from config import ConfigurationError, DEFAULT_CANDIDATE_K, DEFAULT_FINAL_K, DEFAULT_DISTANCE_THRESHOLD, retrieval_environment
 
 @dataclass(frozen=True)
 class RetrievalConfig:
-    candidate_k: int = 15
-    final_k: int = 5
-    max_distance: float = 0.65
+    candidate_k: int = DEFAULT_CANDIDATE_K
+    final_k: int = DEFAULT_FINAL_K
+    max_distance: float = DEFAULT_DISTANCE_THRESHOLD
 
     def __post_init__(self):
         for name in ('candidate_k', 'final_k'):
@@ -24,9 +23,6 @@ class RetrievalConfig:
 def get_retrieval_config(*, candidate_k=None, final_k=None, max_distance=None):
     """Explicit overrides > environment > defaults. Invalid settings fail closed."""
     try:
-        return RetrievalConfig(
-            int(os.environ.get('EDUAGENT_RAG_CANDIDATE_K', '15')) if candidate_k is None else candidate_k,
-            int(os.environ.get('EDUAGENT_RAG_FINAL_K', '5')) if final_k is None else final_k,
-            float(os.environ.get('EDUAGENT_RAG_MAX_DISTANCE', '0.65')) if max_distance is None else max_distance)
+        return RetrievalConfig(*retrieval_environment(candidate_k=candidate_k,final_k=final_k,max_distance=max_distance))
     except (ValueError, TypeError, OverflowError) as exc:
         raise ConfigurationError(f'Invalid retrieval configuration: {exc}') from exc

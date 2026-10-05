@@ -35,13 +35,17 @@ class GenerationProvenance:
     grounded: bool = False
     professor_edited: bool = False
     preferences_applied: bool = False
+    fallback_active: bool = False
+    normalization_applied: bool = False
+    normalization_type: str | None = None
 
     def __post_init__(self):
         if self.generation_type not in ('document','document refinement','assessment','assistant plan') or self.validation_status != 'Validated' or type(self.attempts_used) is not int or not 1 <= self.attempts_used <= 2:
             raise ValueError('Invalid generation provenance.')
         datetime.fromisoformat(self.generated_at)
-        if not all(isinstance(v,str) and v.strip() for v in (self.model,self.provider)) or any(type(v) is not bool for v in (self.grounded,self.professor_edited,self.preferences_applied)):
+        if not all(isinstance(v,str) and v.strip() for v in (self.model,self.provider)) or any(type(v) is not bool for v in (self.grounded,self.professor_edited,self.preferences_applied,self.fallback_active,self.normalization_applied)):
             raise ValueError('Invalid generation provenance.')
+        if self.normalization_type not in (None,'known_mcq_option_shape') or self.normalization_applied!=(self.normalization_type is not None):raise ValueError('Invalid normalization provenance.')
 
 
 def failed(category, attempts=0):
@@ -78,8 +82,9 @@ def from_error(error):
     return failed(Failure.PRODUCT_VALIDATION_FAILED)
 
 
-def annotate(value, kind, attempts, *, grounded=False, preferences_applied=False):
-    from ai_provider import configured
+def annotate(value, kind, attempts, *, grounded=False, preferences_applied=False, normalization_applied=False, normalization_type=None):
+    from ai_provider import configured,get_last_generation_selection
     config=configured()
-    provenance=GenerationProvenance(kind,datetime.now(timezone.utc).isoformat(),'Validated',attempts,config.model,config.provider,grounded,False,preferences_applied)
+    selection=get_last_generation_selection()
+    provenance=GenerationProvenance(kind,datetime.now(timezone.utc).isoformat(),'Validated',attempts,selection.effective_model if selection else config.model,config.provider,grounded,False,preferences_applied,selection.fallback_active if selection else False,normalization_applied,normalization_type)
     return replace(value,provenance=provenance)

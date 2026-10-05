@@ -1,7 +1,5 @@
 """Content-equivalent in-memory renderers, independent of AI output parsing."""
 import io
-import os
-from pathlib import Path
 from document_models import DocumentError,CATALOG
 from document_templates import get_template
 
@@ -9,17 +7,9 @@ class DocumentExportError(DocumentError): pass
 
 
 def pdf_font(text):
-    from fontTools.ttLib import TTFont
-    override=os.environ.get('EDUAGENT_DOCUMENT_FONT')
-    paths=[Path(override)] if override else [Path('/System/Library/Fonts/Supplemental/Arial Unicode.ttf'),Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')]
-    for path in paths:
-        if not path.is_file():continue
-        try:
-            with TTFont(path,lazy=True) as font:
-                glyphs=font.getBestCmap() or {}
-                if all(c.isspace() or ord(c) in glyphs for c in text):return str(path)
-        except Exception:continue
-    raise DocumentExportError('No local Unicode font covers this document. Set EDUAGENT_DOCUMENT_FONT to a suitable local TTF; no text was dropped.')
+    from font_resolver import resolve_pdf_font,FontResolutionError
+    try:return resolve_pdf_font(text,purpose='document')
+    except FontResolutionError as exc:raise DocumentExportError(str(exc)) from exc
 
 
 def visible_blocks(draft,template_id):

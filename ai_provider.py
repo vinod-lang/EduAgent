@@ -5,6 +5,8 @@ import ollama
 import math
 import time
 from dataclasses import dataclass
+from contextvars import ContextVar
+from config import get_ai_profile, AIStackStatus
 from config import get_ai_config, ConfigurationError
 
 class AIProviderError(RuntimeError):
@@ -29,6 +31,7 @@ def get_default_model_name() -> str:
 
 
 def _chat(messages, model=None, *, options=None, timeout_seconds=None, think=None, response_format=None):
+    clear_generation_selection()
     if not isinstance(messages, Sequence) or isinstance(messages, (str, bytes)) or not messages:
         raise AIProviderError('Messages must be a nonempty sequence.')
     normalized = []
@@ -62,7 +65,10 @@ def _chat(messages, model=None, *, options=None, timeout_seconds=None, think=Non
     started=time.perf_counter()
     try:
         with ollama.Client(host=settings.base_url, timeout=settings.timeout_seconds if timeout_seconds is None else timeout_seconds) as client:
-            response = client.chat(model=selected.strip(), messages=normalized, **kwargs)
+            selection=resolve_model(client,settings,model)
+            response = client.chat(model=selection.effective_model, messages=normalized, **kwargs)
+    except AIProviderError:
+        raise
     except (httpx.TransportError, ConnectionError, TimeoutError, OSError) as exc:
         raise AIConnectionError('Local AI service is unavailable or timed out. Make sure Ollama is running.') from exc
     except Exception as exc:
@@ -78,7 +84,8 @@ def _chat(messages, model=None, *, options=None, timeout_seconds=None, think=Non
     def metric(name):
         value=response.get(name) if isinstance(response,Mapping) else getattr(response,name,None)
         return value if type(value)is int and value>=0 else None
-    return ChatMeasurement(content,elapsed,metric('eval_count'),metric('prompt_eval_count'),metric('total_duration'),metric('load_duration'),metric('eval_duration'))
+    _last_selection.set(selection)
+    return ChatMeasurement(content,elapsed,metric('eval_count'),metric('prompt_eval_count'),metric('total_duration'),metric('load_duration'),metric('eval_duration'),selection.effective_model,settings.provider,selection.fallback_active)
 
 
 @dataclass(frozen=True)
@@ -90,6 +97,9 @@ class ChatMeasurement:
     total_duration_ns: int | None
     load_duration_ns: int | None
     eval_duration_ns: int | None
+    effective_model: str | None = None
+    provider: str | None = None
+    fallback_active: bool = False
 
 
 @dataclass(frozen=True)
@@ -110,3 +120,60 @@ def generate_chat(messages, model=None, *, response_format=None) -> str:
 def generate_chat_measured(messages, model=None, *, options=None, timeout_seconds=None, think=None, response_format=None):
     """Explicit opt-in instrumentation; never changes application defaults."""
     return _chat(messages,model,options=options,timeout_seconds=timeout_seconds,think=think,response_format=response_format)
+
+
+@dataclass(frozen=True)
+class ModelSelection:
+    preferred_model: str
+    effective_model: str
+    fallback_active: bool
+
+_last_selection=ContextVar('eduagent_last_selection',default=None)
+
+
+def clear_generation_selection():
+    _last_selection.set(None)
+
+
+def get_last_generation_selection():
+    return _last_selection.get()
+
+
+def available_models(client):
+    """Read Ollama's local inventory only. Never downloads or invokes a shell."""
+    response=client.list()
+    entries=response.get('models') if isinstance(response,Mapping) else getattr(response,'models',None)
+    if not isinstance(entries,Sequence) or isinstance(entries,(str,bytes)):
+        raise AIResponseError('Local model inventory could not be read. Check Ollama availability.')
+    names=set()
+    for entry in entries:
+        name=entry.get('model',entry.get('name')) if isinstance(entry,Mapping) else getattr(entry,'model',None)
+        if not isinstance(name,str) or not name.strip():raise AIResponseError('Local model inventory was unusable. Check Ollama availability.')
+        names.add(name.strip())
+    return names
+
+
+def resolve_model(client,settings,override=None):
+    # Explicit benchmark overrides must never silently select another model.
+    if override is not None:return ModelSelection(override.strip(),override.strip(),False)
+    names=available_models(client)
+    def present(name):
+        return name in names or (':' not in name.rsplit('/',1)[-1] and name+':latest' in names)
+    if present(settings.model):return ModelSelection(settings.model,settings.model,False)
+    if settings.fallback_model and present(settings.fallback_model):
+        return ModelSelection(settings.model,settings.fallback_model,settings.fallback_model!=settings.model)
+    raise AIProviderError('Neither the preferred model nor the configured fallback is installed locally. Install a reviewed model manually or adjust the local AI configuration; EduAgent will not download models.')
+
+
+def get_ai_stack_status():
+    """Explicit health read; no inference, downloads, paths or production storage."""
+    try:
+        profile=get_ai_profile();settings=configured()
+        with ollama.Client(host=settings.base_url,timeout=settings.timeout_seconds) as client:
+            selection=resolve_model(client,settings)
+    except AIProviderError:raise
+    except ConfigurationError as exc:raise AIProviderError('Invalid AI stack configuration.') from exc
+    except (httpx.TransportError,ConnectionError,TimeoutError,OSError) as exc:
+        raise AIConnectionError('Local AI service is unavailable. Check Ollama availability.') from exc
+    except Exception as exc:raise AIProviderError('Local AI stack status could not be read.') from exc
+    return AIStackStatus(profile.provider,profile.preferred_model,selection.effective_model,selection.fallback_active,profile.embedding_model,profile.candidate_k,profile.final_k,profile.distance_threshold,profile.reranker_enabled,profile.router_enabled)

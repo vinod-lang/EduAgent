@@ -37,12 +37,12 @@ def test_candidate_final_and_ranking():
 
 
 def test_relevance_gate_and_diagnostics():
-    collection = Collection([row('good','Relevant text',.2), row('boundary','At cutoff',.65), row('bad','Unrelated text',.9)])
+    collection = Collection([row('good','Relevant text',.2), row('boundary','At cutoff',.50), row('bad','Unrelated text',.9)])
     result = retrieve_evidence('Question', {'course':None}, collection=collection)
     assert [chunk.chunk_id for chunk in result.evidence] == ['good','boundary']
     assert result.diagnostics.relevance_rejected == 1
     diagnostics = result.diagnostics.to_dict()
-    assert diagnostics['metric'] == 'cosine' and diagnostics['max_distance'] == .65
+    assert diagnostics['metric'] == 'cosine' and diagnostics['max_distance'] == .50
     assert 'Question' not in str(diagnostics) and 'Relevant text' not in str(diagnostics)
 
 

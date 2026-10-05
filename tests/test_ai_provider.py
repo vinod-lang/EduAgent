@@ -9,14 +9,14 @@ import ai_provider as ai
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for key in ('EDUAGENT_LLM_PROVIDER','EDUAGENT_LLM_MODEL','EDUAGENT_OLLAMA_BASE_URL','EDUAGENT_LLM_TIMEOUT_SECONDS','OLLAMA_HOST'):
+    for key in ('EDUAGENT_LLM_PROVIDER','EDUAGENT_LLM_PREFERRED_MODEL','EDUAGENT_LLM_FALLBACK_MODEL','EDUAGENT_LLM_MODEL','EDUAGENT_OLLAMA_BASE_URL','EDUAGENT_LLM_TIMEOUT_SECONDS','OLLAMA_HOST'):
         monkeypatch.delenv(key,raising=False)
 
 
 def test_defaults():
     c=config.get_ai_config()
-    assert (c.provider,c.model,c.base_url,c.timeout_seconds)==('ollama','llama3.2:3b','http://127.0.0.1:11434',120)
-    assert ai.get_default_model_name()=='llama3.2:3b'
+    assert (c.provider,c.model,c.base_url,c.timeout_seconds)==('ollama','qwen2.5:3b','http://127.0.0.1:11434',120)
+    assert ai.get_default_model_name()=='qwen2.5:3b'
 
 @pytest.mark.parametrize('key,value,field,expected',[('EDUAGENT_LLM_MODEL','alternate','model','alternate'),('EDUAGENT_LLM_PROVIDER','ollama','provider','ollama'),('EDUAGENT_OLLAMA_BASE_URL','http://localhost:1234','base_url','http://localhost:1234'),('EDUAGENT_LLM_TIMEOUT_SECONDS','4.5','timeout_seconds',4.5),('OLLAMA_HOST','http://localhost:2345','base_url','http://localhost:2345')])
 def test_override(monkeypatch,key,value,field,expected):
@@ -37,6 +37,7 @@ def test_invalid_config(monkeypatch,key,value):
 @pytest.fixture
 def boundary(monkeypatch):
     client=MagicMock();client.__enter__.return_value=client;client.chat.return_value={'message':{'content':'Synthetic output'}}
+    client.list.side_effect=lambda: {'models':[{'model':ai.configured().model}]}
     factory=Mock(return_value=client);monkeypatch.setattr(ai.ollama,'Client',factory)
     return client,factory
 
@@ -86,8 +87,11 @@ def test_production_boundary_guard():
         if path.name!='ai_provider.py':
             assert not any((isinstance(n,ast.Import) and any(a.name=='ollama' for a in n.names)) or (isinstance(n,ast.ImportFrom) and n.module=='ollama') for n in ast.walk(tree)),path.name
         if path.name!='ai_provider.py':assert 'ollama.chat(' not in path.read_text(),path.name
-        if path.name!='config.py':assert 'llama3.2:3b' not in path.read_text(),path.name
-    assert 'all-MiniLM-L6-v2' in (root/'vector_store.py').read_text()
+        if path.name!='config.py':
+            assert 'llama3.2:3b' not in path.read_text(),path.name
+            assert 'qwen2.5:3b' not in path.read_text(),path.name
+    assert 'all-MiniLM-L6-v2' in (root/'config.py').read_text()
+    assert 'get_embedding_model_name()' in (root/'vector_store.py').read_text()
 
 
 def test_configured_host_forwarded(boundary, monkeypatch):
