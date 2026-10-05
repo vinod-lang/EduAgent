@@ -72,6 +72,8 @@ class DocumentWorkspace:
     versions: object
     ownership: Ownership
     document_id: str | None = None
+    saved_version_id: str | None = None
+    saved_status: str | None = None
 @dataclass(frozen=True)
 class StudentWorkspace:
     dataset: object

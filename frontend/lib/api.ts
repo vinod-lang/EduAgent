@@ -1,4 +1,4 @@
-import type { Professor, Dashboard, Material, AIStatus, Answer, KnowledgeRequest, Hierarchy, UploadResult, DeleteResult, MaterialDetail, Assessment, AssessmentRequest, QuestionEdit } from "@/types/api";
+import type { Professor, Dashboard, Material, AIStatus, Answer, KnowledgeRequest, Hierarchy, UploadResult, DeleteResult, MaterialDetail, Assessment, AssessmentRequest, QuestionEdit, DocumentCatalog, DraftMetadata, StudioDocument, DocumentRequest, DocumentEdit, DocumentFact, DocumentChange, DocumentPreference, PreferenceRequest } from "@/types/api";
 const messages: Record<number, string> = {
   401: "Your session has ended. Sign in again to continue.", 403: "This request is not permitted. Refresh your session and try again.",
   413: "This file exceeds the API upload limit. Choose a smaller file.",
@@ -66,6 +66,29 @@ export class APIClient {
   uploadPYQ(file:File){const form=new FormData();form.append("file",file);return this.mutate<{handle:string}>("/assessments/pyq","POST",form);}
   async exportAssessment(handle:string,format:'pdf'|'docx',answerKey:boolean){
     let response:Response;try{response=await this.transport(`/api/v1/assessments/${encodeURIComponent(handle)}/export?format=${format}&answer_key=${answerKey}`,{credentials:"include",cache:"no-store"});}catch{throw new APIError(0,"NETWORK_ERROR");}
+    if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
+  }
+  documentCatalog(signal?:AbortSignal){return this.request<DocumentCatalog>("/documents/catalog",undefined,signal);}
+  documents(signal?:AbortSignal){return this.request<DraftMetadata[]>("/documents",undefined,signal);}
+  loadDocument(id:string,signal?:AbortSignal){return this.request<StudioDocument>(`/documents/${encodeURIComponent(id)}`,undefined,signal);}
+  generateDocument(body:DocumentRequest,signal?:AbortSignal){return this.request<StudioDocument>("/documents/generate",body,signal);}
+  reviewDocument(handle:string){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}`);}
+  editDocument(handle:string,body:DocumentEdit){return this.mutate<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}`,"PATCH",body);}
+  saveDocument(handle:string,status:'Draft'|'Final'){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/save`,{status});}
+  refineDocument(handle:string,instruction:string,signal?:AbortSignal){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/refine`,{instruction},signal);}
+  restoreDocument(handle:string,index:number){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/restore`,{index});}
+  compareDocument(handle:string,before:number,after:number){return this.request<DocumentChange[]>(`/document-workspaces/${encodeURIComponent(handle)}/diff?before=${before}&after=${after}`);}
+  documentConflicts(handle:string,draft:DocumentEdit){return this.request<DocumentFact[]>(`/document-workspaces/${encodeURIComponent(handle)}/conflicts`,draft);}
+  resolveDocument(handle:string,draft:DocumentEdit,update_confirmed:boolean,replacements:Record<string,string>){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/resolve-edit`,{draft,update_confirmed,replacements});}
+  manageDocumentFact(handle:string,body:{operation:'add'|'update'|'remove';field?:string;value?:string;fact_id?:string}){return this.request<{status:string}>(`/document-workspaces/${encodeURIComponent(handle)}/facts`,body);}
+  discardDocument(handle:string){return this.mutate<{status:string}>(`/document-workspaces/${encodeURIComponent(handle)}`,"DELETE");}
+  documentFeedback(handle:string,rating:'Good'|'Needs Changes',note:string){return this.request<{status:string}>(`/document-workspaces/${encodeURIComponent(handle)}/feedback`,{rating,note});}
+  preferences(signal?:AbortSignal){return this.request<DocumentPreference[]>("/preferences",undefined,signal);}
+  approvePreference(body:PreferenceRequest){return this.request<{handle:string}>("/preferences",body);}
+  updatePreference(id:string,body:{instruction?:string;active?:boolean}){return this.mutate<{status:string}>(`/preferences/${encodeURIComponent(id)}`,"PATCH",body);}
+  deletePreference(id:string){return this.mutate<{status:string}>(`/preferences/${encodeURIComponent(id)}`,"DELETE");}
+  async exportDocument(handle:string,format:'pdf'|'docx'){
+    let response:Response;try{response=await this.transport(`/api/v1/document-workspaces/${encodeURIComponent(handle)}/export?format=${format}`,{credentials:"include",cache:"no-store"});}catch{throw new APIError(0,"NETWORK_ERROR");}
     if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
   }
   async login(identity: string) { const data = await this.raw<{ csrf_token: string }>("/auth/dev-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identity }) }); this.csrf = data.csrf_token; }

@@ -12,8 +12,15 @@ def error(request,code,message,status):
 def install(app):
     @app.exception_handler(ApplicationError)
     async def controlled(request,exc):
+        if request.url.path.startswith('/api/v1/document-workspaces') and request.url.path.endswith('/export'):
+            from font_resolver import FontResolutionError
+            cause=exc.__cause__
+            while cause is not None:
+                if isinstance(cause,FontResolutionError):
+                    return error(request,'PDF_FONT_UNAVAILABLE','PDF export needs a suitable local font for this document. Ask the administrator to configure the PDF font, or export DOCX.',422)
+                cause=cause.__cause__
         response=error(request,exc.code,exc.message,STATUS.get(exc.code,400))
-        if request.url.path.startswith('/api/v1/assessments') and exc.generation_diagnostic is not None:
+        if request.url.path.startswith(('/api/v1/assessments','/api/v1/documents','/api/v1/document-workspaces')) and exc.generation_diagnostic is not None:
             from generation_diagnostics import failed
             from structured_generation import Failure
             try:diagnostic=failed(exc.generation_diagnostic.category,exc.generation_diagnostic.attempts_used)

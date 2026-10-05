@@ -112,13 +112,19 @@ def save_draft(versions,document_id=None,status='Draft',*,ownership=None):
     except sqlite3.Error as exc:raise DocumentStorageError('Draft could not be saved to local storage.') from exc
 
 
-def list_drafts(*, authorized_ids=None):
+def list_drafts(*, authorized_ids=None, include_content_metadata=False):
     try:
         with db.material_connection() as conn:
             if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='document_drafts'").fetchone():return []
             if authorized_ids is not None and not authorized_ids:return []
             where=' WHERE document_id IN ('+','.join('?' for _ in authorized_ids)+')' if authorized_ids is not None else ''
-            return [dict(row) for row in conn.execute('SELECT document_id,template_id,created_at,updated_at,status FROM document_drafts'+where+' ORDER BY updated_at DESC',tuple(authorized_ids) if authorized_ids is not None else ())]
+            rows=[dict(row) for row in conn.execute('SELECT document_id,template_id,created_at,updated_at,status'+(',current_json' if include_content_metadata else '')+' FROM document_drafts'+where+' ORDER BY updated_at DESC',tuple(authorized_ids) if authorized_ids is not None else ())]
+            if include_content_metadata:
+                for row in rows:
+                    draft=parse_draft(row.pop('current_json'))
+                    row.update(title=draft.title or draft.subject,document_type=draft.document_type)
+                    row['version_count']=len(load_draft(row['document_id']).history)
+            return rows
     except sqlite3.Error as exc:raise DocumentStorageError('Saved drafts could not be listed.') from exc
 
 

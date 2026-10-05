@@ -921,3 +921,57 @@ Question removal, single-question AI replacement and manual additions are deferr
 because fixed distributions and provenance require dedicated validated contracts.
 No AI calls, production storage migrations or model/RAG default changes are needed
 for the isolated tests and mocked browser smoke test.
+
+## Build 24 — Web Document Studio
+
+The authenticated `/documents` workspace exposes the existing Document Studio
+lifecycle through explicit application-service calls. Supported document types,
+tones, structured editing fields, fact fields and preference choices come from
+an authorized backend catalog. The editor uses labelled text controls and
+paragraph arrays; no rich-text dependency or HTML rendering is introduced.
+Generation and refinement retain structured generation, product validation and
+fact-preservation guards. These operations are synchronous. Stop waiting aborts
+browser waiting, not inference; a stopped refinement requires reloading current
+server state before edits or exports resume.
+
+The list projects the saved current title (or subject), type and real version
+count. Blank legacy names use an explicit untitled label. No new title column,
+schema migration or generated display title is needed. Saved documents persist
+in the existing repository; transient handles, edits and unsaved history are
+session-only. Navigation/logout/expiry/restart can lose unsaved work.
+
+Save document explicitly applies/validates local edits and then persists coherent
+history. No keystroke writes or autosave occur. If persistence fails after edits
+were applied, that applied version remains marked unsaved and can be saved again.
+Dirty edits block export and refinement. Switching documents, New document and
+restore warn about unsaved changes; restore always requires confirmation and
+appends a version instead of rewinding history. Historical content, confirmed
+facts and provenance remain linked. Diffs use the existing deterministic diff
+function, never AI.
+
+Confirmed facts can be inspected, added, updated or explicitly removed. New facts
+must match current content; structured fact changes follow edit/conflict
+resolution. A conflict leaves previous valid content current. Keeping original
+facts retains the local professor edit for revision; updating facts is an explicit
+professor decision and requires a later save. Body replacements require explicit
+replacement values. Free prose is never automatically promoted into trusted facts.
+
+Private feedback attaches to a saved current version and never automatically
+becomes a preference. Manual reusable style preferences require explicit approval;
+category/scope/type filters remain domain-validated and professor-scoped. Approved
+preferences can be updated, activated/deactivated or explicitly deleted. Generation
+uses existing deterministic preference selection. Existing refinement does not
+inject preferences; the UI reports application only from stored provenance.
+Model weights are not trained. Provenance is secondary, allowlisted metadata;
+raw prompts, rejected responses, provider URLs and internal hashes are omitted.
+
+Minimal API additions provide catalog/current workspace review, deterministic
+version diff, conflict inspection and transient workspace discard. Document
+responses include safe saved-state, version, fact and provenance projections.
+Existing mutation routes use CSRF and session-owned handles. Expected invalid
+manual edits use controlled application errors. Missing PDF font errors provide
+safe administrator guidance and DOCX fallback; local font resolution is unchanged.
+Exports use validated current content without facts/provenance metadata sections.
+Facts, prose, feedback and preferences never enter Activity Log details, URLs,
+Chroma or client persistent storage. Tests and browser smoke use synthetic private
+records, mocked inference and isolated runtime only. Streamlit remains intact.

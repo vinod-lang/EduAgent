@@ -65,7 +65,9 @@ class UploadResponse(Transport):success:bool;duplicate:bool;material:MaterialRes
 class MaterialUpdateResponse(Transport):status:str;success:bool
 class DeletionResponse(Transport):success:bool;sqlite_deleted:bool|None;vectors_deleted:int|None;file_deleted:bool|None
 class RetrievalResponse(Transport):status:str;sources:list[Source];evidence_count:int
-class DocumentResponse(DocumentEdit):handle:str;document_id:str|None;document_type:str;version_count:int
+class DocumentResponse(DocumentEdit):
+    handle:str;document_id:str|None;document_type:str;version_count:int
+    saved:bool;status:str|None;versions:list[dict];facts:list[dict];provenance:dict|None
 class VersionResponse(Transport):version_id:str;version_number:int;source:str;created_at:str
 class FactResponse(Transport):fact_id:str;field:str;value:str;source:str
 class QuestionResponse(Transport):
@@ -79,8 +81,8 @@ class AssessmentQuestionEdit(Transport):
     correct_answer:str=Field(max_length=1)
     model_answer:str=Field(min_length=1,max_length=6000)
 class AssessmentEdit(Transport):revision:int=Field(ge=0);questions:list[AssessmentQuestionEdit]=Field(min_length=1,max_length=100)
-class PreferenceResponse(Transport):preference_id:str;instruction:str;category:str;scope:str;active:bool
-class DraftMetadata(Transport):document_id:str;template_id:str;created_at:str;updated_at:str;status:str
+class PreferenceResponse(Transport):preference_id:str;instruction:str;category:str;scope:str;active:bool;approved:bool;document_type:str|None;template_id:str|None;tone:str|None
+class DraftMetadata(Transport):document_id:str;template_id:str;created_at:str;updated_at:str;status:str;title:str='';document_type:str='';version_count:int=0
 class BookResponse(Handle):sheets:list[str]
 class StudentResponse(Transport):students:list[dict];summary:dict
 class ActionResponse(Transport):action_id:str;action_type:str;parameters:dict;depends_on:list[str]

@@ -128,6 +128,13 @@ def generate_document(body:S.DocumentRequest,request:Request,p=Depends(principal
     from document_models import DocumentRequest
     a=invoke(request,api.documents.generate,invoke(request,DocumentRequest,**body.model_dump()),context=p.context)
     handle=request.app.state.workspaces.put(p,'document',a);return P.document(a,handle)
+@router.get('/documents/catalog',tags=['Documents'],summary='Authoritative document choices; no storage initialization')
+def document_catalog(p=Depends(principal)):
+    from document_models import CATALOG,TONES,FIELDS
+    from document_facts import FIELDS as FACT_FIELDS
+    from document_preferences import SCOPES
+    from document_diff import REUSABLE_CATEGORIES
+    return dict(types=[dict(value=k,label=v[0],style=v[1]) for k,v in CATALOG.items()],tones=list(TONES),fields=list(FIELDS),fact_fields=list(FACT_FIELDS),preference_scopes=list(SCOPES),preference_categories=list(REUSABLE_CATEGORIES))
 @router.get('/documents/{identity}',tags=['Documents'],summary='Load private saved draft into current session',response_model=S.DocumentResponse)
 def load_document(identity:str,request:Request,p=Depends(principal),api=Depends(services)):
     a=invoke(request,api.documents.load,identity,context=p.context);key=request.app.state.workspaces.put(p,'document',a);return P.document(a,key)
@@ -135,6 +142,23 @@ def load_document(identity:str,request:Request,p=Depends(principal),api=Depends(
 def versions(identity:str,request:Request,p=Depends(principal),api=Depends(services)):
     rows=invoke(request,api.documents.history,identity,context=p.context)
     return [{k:r.get(k) for k in ('version_id','version_number','source','created_at')} for r in rows]
+@router.get('/document-workspaces/{handle}',tags=['Documents'],response_model=S.DocumentResponse,summary='Read current authorized session document')
+def document_review(handle:str,request:Request,p=Depends(principal),api=Depends(services)):
+    with request.app.state.workspaces.item(p,handle,'document') as a:
+        return P.document(invoke(request,api.documents.review,a,context=p.context),handle)
+@router.delete('/document-workspaces/{handle}',tags=['Documents'],response_model=S.StatusResponse,summary='Discard session workspace, preserving any saved document')
+def discard_document(handle:str,request:Request,p=Depends(principal)):
+    request.app.state.workspaces.remove(p,handle,'document');return {'status':'discarded'}
+@router.get('/document-workspaces/{handle}/diff',tags=['Documents'],summary='Deterministic private version comparison')
+def document_comparison(handle:str,request:Request,before:int,after:int,p=Depends(principal),api=Depends(services)):
+    with request.app.state.workspaces.item(p,handle,'document') as a:
+        changes=invoke(request,api.documents.compare,a,before,after,context=p.context)
+        return [dict(field=c.field,action=c.action,before=list(c.before),after=list(c.after)) for c in changes]
+@router.post('/document-workspaces/{handle}/conflicts',tags=['Documents'],response_model=list[S.FactResponse],summary='Inspect explicit proposed edit conflicts; do not mutate')
+def document_conflicts(handle:str,body:S.DocumentEdit,request:Request,p=Depends(principal),api=Depends(services)):
+    with request.app.state.workspaces.item(p,handle,'document') as a:
+        data=body.model_dump();data['body']=tuple(data['body']);draft=invoke(request,replace,a.versions.current,**data)
+        return [dict(fact_id=f.fact_id,field=f.field,value=f.value,source=f.source) for f in invoke(request,api.documents.conflicts,a,draft,context=p.context)]
 @router.post('/document-workspaces/{handle}/save',tags=['Documents'],summary='Save private current content and fact history',response_model=S.DocumentResponse)
 def save_document(handle:str,body:S.Save,request:Request,p=Depends(principal),api=Depends(services)):
     with request.app.state.workspaces.item(p,handle,'document') as a:
@@ -142,7 +166,7 @@ def save_document(handle:str,body:S.Save,request:Request,p=Depends(principal),ap
 @router.patch('/document-workspaces/{handle}',tags=['Documents'],summary='Apply explicit professor edits with fact validation',response_model=S.DocumentResponse)
 def edit_document(handle:str,body:S.DocumentEdit,request:Request,p=Depends(principal),api=Depends(services)):
     with request.app.state.workspaces.item(p,handle,'document') as a:
-        draft=replace(a.versions.current,**body.model_dump(exclude={'body'}),body=tuple(body.body))
+        draft=invoke(request,replace,a.versions.current,**body.model_dump(exclude={'body'}),body=tuple(body.body))
         a=invoke(request,api.documents.edit,a,draft,context=p.context);request.app.state.workspaces.update(p,handle,'document',a);return P.document(a,handle)
 @router.post('/document-workspaces/{handle}/refine',tags=['Documents'],summary='Refine while protecting confirmed facts',response_model=S.DocumentResponse)
 def refine_document(handle:str,body:S.Refine,request:Request,p=Depends(principal),api=Depends(services)):
@@ -170,7 +194,7 @@ def document_export(handle:str,request:Request,format:str='pdf',p=Depends(princi
     with request.app.state.workspaces.item(p,handle,'document') as a:return binary(invoke(request,api.documents.export,a,context=p.context,format=format),format)
 @router.get('/preferences',tags=['Documents'],summary='List private approved preferences',response_model=list[S.PreferenceResponse])
 def preferences(request:Request,p=Depends(principal),api=Depends(services)):
-    return [{'preference_id':a.preference_id,'instruction':a.instruction,'category':a.category,'scope':a.scope,'active':a.active} for a in invoke(request,api.documents.list_preferences,context=p.context)]
+    return [{k:getattr(a,k) for k in ('preference_id','instruction','category','scope','active','approved','document_type','template_id','tone')} for a in invoke(request,api.documents.list_preferences,context=p.context)]
 @router.post('/preferences',tags=['Documents'],response_model=S.Handle,summary='Explicitly approve a private preference')
 def preference(body:S.Preference,request:Request,p=Depends(principal),api=Depends(services)):
     data=body.model_dump();text=data.pop('instruction');return {'handle':invoke(request,api.documents.approve_preference,text,context=p.context,**data)}
@@ -238,7 +262,7 @@ def activity(request:Request,p=Depends(principal),api=Depends(services)):
 @router.post('/document-workspaces/{handle}/resolve-edit',tags=['Documents'],response_model=S.DocumentResponse,summary='Explicitly resolve changed confirmed facts')
 def resolve_edit(handle:str,body:S.ResolveEdit,request:Request,p=Depends(principal),api=Depends(services)):
     with request.app.state.workspaces.item(p,handle,'document') as a:
-        data=body.draft.model_dump();data['body']=tuple(data['body']);draft=replace(a.versions.current,**data)
+        data=body.draft.model_dump();data['body']=tuple(data['body']);draft=invoke(request,replace,a.versions.current,**data)
         a=invoke(request,api.documents.resolve_conflict,a,draft,context=p.context,update_confirmed=body.update_confirmed,replacements=body.replacements)
         request.app.state.workspaces.update(p,handle,'document',a);return P.document(a,handle)
 @router.patch('/preferences/{identity}',tags=['Documents'],response_model=S.StatusResponse,summary='Update private preference explicitly')

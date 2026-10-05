@@ -116,10 +116,12 @@ class ScopedDocuments(Protected):
         return workspace
     def list_drafts(self,*,context=None):
         ids=self.policy.visible_ids(context,'document')
-        return call(dependency(self.base.repository,'document_repository').list_drafts,authorized_ids=ids)
+        return call(dependency(self.base.repository,'document_repository').list_drafts,authorized_ids=ids,include_content_metadata=True)
     def load(self,identity,*,context=None):
         own=self.policy.resource(context,Action.READ,'document',identity)
-        return DocumentWorkspace(self.base.load(identity),own,identity)
+        versions=self.base.load(identity)
+        status=next((d['status'] for d in self.list_drafts(context=context) if d['document_id']==identity),None)
+        return DocumentWorkspace(versions,own,identity,versions.version_ids[-1],status)
     def generate(self,request,*,context=None,retry=False,required_body_facts=()):
         own=self.private(context)
         draft=self.base.generate(request,retry=retry,required_body_facts=required_body_facts,approved_preferences=self.list_preferences(context=context))
@@ -138,7 +140,17 @@ class ScopedDocuments(Protected):
     def save(self,workspace,*,context=None,status='Draft'):
         self._workspace(workspace,context,Action.UPDATE if workspace.document_id else Action.CREATE)
         identity=self.base.save(workspace.versions,workspace.document_id,status,ownership=workspace.ownership if workspace.document_id is None else None)
-        return replace(workspace,document_id=identity)
+        return replace(workspace,document_id=identity,saved_version_id=workspace.versions.version_ids[-1],saved_status=status)
+    def review(self,workspace,*,context=None):
+        return self._workspace(workspace,context,Action.READ)
+    def conflicts(self,workspace,draft,*,context=None):
+        self._workspace(workspace,context,Action.READ)
+        return self.base.conflicts(draft,workspace.versions.expectation_snapshots[-1])
+    def compare(self,workspace,before,after,*,context=None):
+        self._workspace(workspace,context,Action.READ)
+        if any(type(i) is not int or not 0<=i<len(workspace.versions.history) for i in (before,after)):raise ValidationError()
+        from document_diff import document_diff
+        return call(document_diff,workspace.versions.history[before],workspace.versions.history[after])
     def facts(self,workspace,*,context=None):
         self._workspace(workspace,context,Action.READ)
         return workspace.versions.expectation_snapshots[-1]
@@ -154,6 +166,8 @@ class ScopedDocuments(Protected):
     def feedback(self,workspace,rating,note='',*,context=None):
         self._workspace(workspace,context,Action.UPDATE)
         if not workspace.document_id:raise ValidationError()
+        saved=self.base.history(workspace.document_id)
+        if not saved or saved[-1]['version_id']!=workspace.versions.version_ids[-1]:raise ValidationError()
         return self.base.feedback(workspace.document_id,workspace.versions.version_ids[-1],rating,note)
     def list_preferences(self,*,context=None):
         ids=self.policy.visible_ids(context,'preference')
