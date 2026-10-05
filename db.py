@@ -160,18 +160,26 @@ def find_material_hash(file_hash):
         return dict(row) if row else None
 
 
-def list_materials(course=None):
+def list_materials(course=None, *, authorized_ids=None):
     with material_connection() as conn:
-        rows = conn.execute('SELECT * FROM materials' + (' WHERE course = ?' if course else '') + ' ORDER BY created_at DESC', (course,) if course else ()).fetchall()
+        clauses=[];params=[]
+        if course:clauses.append('course = ?');params.append(course)
+        if authorized_ids is not None:
+            if not authorized_ids:return []
+            clauses.append('material_id IN ('+','.join('?' for _ in authorized_ids)+')');params.extend(authorized_ids)
+        rows = conn.execute('SELECT * FROM materials'+(' WHERE '+' AND '.join(clauses) if clauses else '')+' ORDER BY created_at DESC',params).fetchall()
         return [dict(row) for row in rows]
 
 
-def register_material(record):
+def register_material(record, *, ownership=None):
     keys = ('material_id', 'original_filename', 'managed_filename', 'file_hash', 'course', 'semester', 'subject', 'unit', 'chunk_ids', 'created_at')
     with material_connection() as conn:
         conn.execute('INSERT INTO materials (' + ','.join(keys) + ') VALUES (' + ','.join('?' for _ in keys) + ')', tuple(record[k] for k in keys))
         conn.execute('INSERT OR IGNORE INTO courses (course_name, created_at) VALUES (?, ?)', (record['course'], record['created_at']))
         conn.execute('INSERT INTO activity_log (action, details, timestamp) VALUES (?, ?, ?)', ('material_uploaded', record['material_id'], record['created_at']))
+        if ownership is not None:
+            from security.repository import SecurityRepository
+            SecurityRepository.attach_ownership(conn,'material',record['material_id'],ownership)
 
 
 def update_material_hierarchy(material_id, hierarchy):

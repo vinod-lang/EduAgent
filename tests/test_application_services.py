@@ -12,6 +12,7 @@ from unittest.mock import Mock
 import pytest
 import db
 from application import create_application_services
+from security.models import development_legacy_context
 from application.materials import MaterialService
 from application.knowledge import KnowledgeService
 from application.assessments import AssessmentService
@@ -63,7 +64,7 @@ def test_architecture_no_streamlit_ollama_sqlite_or_chroma_clients():
 
 def test_factory_injection_no_actions():
     material=Mock();activity=Mock();knowledge=Mock()
-    services=create_application_services(materials=material,activity=activity,knowledge=knowledge)
+    services=create_application_services(materials=material,activity=activity,knowledge=knowledge,context=development_legacy_context())
     assert services.materials is material and services.activity is activity and services.knowledge is knowledge
     assert services.dashboard.materials is material and services.dashboard.activity is activity
     assert not material.mock_calls and not activity.mock_calls and not knowledge.mock_calls
@@ -280,7 +281,7 @@ def test_activity_and_dashboard_private_log_sanitized(storage):
     assert db.get_recent_activity()[0]['details']==''
     with pytest.raises(ValidationError):activity.record('PRIVATE raw request')
     with pytest.raises(TypeError):activity.record('document_saved',details='PRIVATE')
-    services=create_application_services()
+    services=create_application_services(context=development_legacy_context())
     view=services.dashboard.workspace()
     assert view['summary']['managed_count']==0 and view['materials']==[]
     json.dumps(view)

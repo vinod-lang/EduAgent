@@ -14,8 +14,9 @@ from coordinator import classify_intent
 from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes, generate_question_paper_pdf_bytes
 from document_agent import generate_batch_attendance_warnings
 from application import create_application_services
+from security.models import development_legacy_context
 from application.errors import ApplicationError
-services = create_application_services()
+services = create_application_services(context=development_legacy_context())
 list_materials = services.materials.list_materials
 get_all_courses = services.materials.courses
 available_courses = services.materials.available_courses

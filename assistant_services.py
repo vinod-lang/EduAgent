@@ -112,7 +112,7 @@ def dispatch(action,prepared,context,previous):
     return ActionResult(action.action_id,'completed',action.action_type,'Completed locally.' if action.action_type in ('ANALYZE_STUDENTS','NAVIGATE') else 'Completed; professor review required.',payload)
 
 
-def execute_plan(plan,context=None,previous=None,retry=False):
+def execute_plan(plan,context=None,previous=None,retry=False,*,dispatcher=None):
     context=context or ExecutionContext()
     if plan.unsupported:raise PlanError('Unsupported request. Use the dedicated feature pages.')
     if validate_plan(plan,context):raise PlanError('Clarification required before execution.')
@@ -129,7 +129,7 @@ def execute_plan(plan,context=None,previous=None,retry=False):
             results[action.action_id]=old[action.action_id];continue
         if any(results[d].status!='completed' for d in action.depends_on):
             results[action.action_id]=ActionResult(action.action_id,'blocked',action.action_type,'Blocked by dependency.');continue
-        try:results[action.action_id]=dispatch(action,prepare(action,context),context,results)
+        try:results[action.action_id]=(dispatcher or dispatch)(action,prepare(action,context),context,results)
         except Exception:
             # Raw provider/client exceptions may contain private payloads; do not echo them.
             results[action.action_id]=ActionResult(action.action_id,'failed',action.action_type,'Failed.',error='Service failed or returned invalid output. Review the parameters/service availability, then retry.')

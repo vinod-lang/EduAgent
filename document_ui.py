@@ -8,8 +8,9 @@ from document_facts_ui import render_fact_conflict,render_confirmed_facts
 from ai_provider import AIProviderError
 from document_models import CATALOG,TONES,FIELDS,DocumentRequest,DocumentDraft,DocumentVersions,DocumentError
 from application import create_application_services
+from security.models import development_legacy_context
 from application.errors import ApplicationError,ConflictError
-services = create_application_services()
+services = create_application_services(context=development_legacy_context())
 generate_draft = services.documents.generate
 refine_draft = services.documents.refine_draft
 from document_templates import TEMPLATES,get_template

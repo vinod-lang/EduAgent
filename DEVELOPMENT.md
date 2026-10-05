@@ -520,3 +520,89 @@ must be implemented and tested separately before multi-professor deployment.
 Build 17 profile and retrieval defaults are unchanged; no benchmark or live AI
 calls are needed in this build. Production runtime storage and the locally excluded
 nested accidental clone must remain byte-for-byte unchanged.
+
+## Build 19 — identity and authorization foundation
+
+Build 19 supersedes Build 18's optional identity placeholder. The default
+`create_application_services()` returns protected services and denies missing
+identity. Identity is passed explicitly on every operation, never stored as a
+process-global current user. The current Streamlit composition explicitly selects
+`development_legacy_context()`: this remains single-user development compatibility,
+not authenticated or production multi-professor access. There is no login UI.
+
+Future trusted authentication → ProfessorContext → repository-backed policy
+→ protected application services → scoped repositories/retrieval → storage/provider.
+
+Professor, institution, department and course identifiers are opaque UUIDs.
+Repository-backed active status, roles and explicit course membership determine
+access; names, filenames, document content and LLM output never grant permission.
+Contexts are not credentials: a future backend must construct them from trusted
+authentication, not accept claimed identity directly from request JSON.
+
+PRIVATE resources are owner-only, including against administrators. COURSE reads
+require explicit membership in the matching institution/department/course.
+DEPARTMENT reads require the matching department; INSTITUTE reads require the
+matching institution. There is no public scope or cross-institution administrator
+bypass. Department/institute sharing requires the corresponding administrative
+role. Shared-resource mutation permits the owner or the applicable scoped
+administrator; private documents and preferences never become shared. Unknown,
+inactive, malformed or contradictory identity/ownership defaults to denial.
+Absent ownership records are legacy, not implicitly public or assigned to a
+fabricated professor. Scoped lists exclude them; guessed inaccessible resource IDs
+return the same not-found result as absent IDs for valid actors.
+
+The lazy SecurityRepository has explicit additive, transactional, idempotent
+initialization for professor/course/membership/ownership/audit companion tables.
+No production database migration or backfill is performed in this build. Trusted
+offline bootstrap provisions the first administrator; subsequent identity and
+membership administration is policy-controlled. Material, document and preference
+creation registers ownership in the existing SQLite transaction. The security
+repository and domain repository must use the same SQLite unit of work. Existing
+Build 18 classes and low-level repositories remain trusted internal compatibility
+adapters; future external interfaces must use the protected composition root.
+
+Material lists are SQL-scoped. Retrieval obtains authorized material IDs before
+querying Chroma and adds a mandatory material-ID allowlist to the query filter.
+Legacy/unowned chunks are excluded. Returned IDs and permission revocation are
+checked before provider use; the existing deterministic no-evidence gate remains.
+New chunks include owner/institution/department/course/scope metadata alongside
+material ID and course/semester/subject/unit. SQLite ownership is authoritative.
+Explicit sharing changes that registry with a compare-and-swap update, without
+rewriting existing vectors. Vector scope labels describe creation-time metadata
+and can be stale after sharing; they never independently grant access.
+
+Document bodies, versions, confirmed facts, feedback and provenance inherit private
+document ownership. Approved preferences are SQL-scoped and only the authorized
+preference tuple reaches generation. Assessment evidence uses the same authorized
+retrieval boundary; generated assessment workspaces are private and ephemeral.
+Assistant actions are individually authorized through the fixed service registry.
+Confirmation, dependencies, refusal, bounded retries and partial failures remain
+intact; retained retrieval evidence is reauthorized before retry reuse. Student
+workspaces are owner-bound, local and ephemeral; records do not enter the planner,
+provider, Chroma or new persistence. Audit entries contain approved action labels,
+actor/resource identifiers and timestamps only, never prompts, bodies, facts,
+preferences, student records or arbitrary details.
+
+Security invariants:
+
+1. Missing context never falls back to development compatibility.
+2. Repository-backed active identity is required before protected reads or writes.
+3. Unknown or inconsistent ownership grants no access.
+4. Private ownership has no administrator bypass.
+5. Membership is explicit, not inferred from academic labels.
+6. Permission filtering precedes retrieval and generation.
+7. Documents and preferences remain private across lifecycle operations.
+8. Each assistant action and retained evidence is reauthorized.
+9. Student data remains deterministic and local.
+10. Imports, factories and tests do not initialize or migrate production storage.
+
+Remaining boundaries: this is not authentication or a production multi-tenant
+backend. Existing SQLite domain modules still use DB_PATH; trusted composition
+must configure a consistent repository. Authorization and cross-storage writes
+cannot eliminate every concurrent revocation window without stronger transaction
+and locking design. Domain workspace objects must remain trusted server-owned
+objects, not deserialize unchecked ownership claims from clients. Global file-hash
+deduplication is preserved; inaccessible matches reveal only a generic duplicate
+outcome, not another professor's filename/ID. Legacy adoption/backfill needs a
+separate explicit, auditable workflow. No Chroma reindex, ranking/model change,
+HTTP API, deployment or model inference is introduced.

@@ -2,8 +2,9 @@
 import streamlit as st
 from document_facts import FIELDS
 from application import create_application_services
+from security.models import development_legacy_context
 from application.errors import ApplicationError
-service = create_application_services().documents
+service = create_application_services(context=development_legacy_context()).documents
 fact = service.fact
 conflicts = service.conflicts
 confirm_edit = service.confirm_edit

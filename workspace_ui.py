@@ -2,8 +2,9 @@
 import streamlit as st
 from dashboard import QUICK_ACTIONS, material_type, build_material_tree
 from application import create_application_services
+from security.models import development_legacy_context
 from application.errors import ApplicationError
-legacy_content_view = create_application_services().dashboard.legacy
+legacy_content_view = create_application_services(context=development_legacy_context()).dashboard.legacy
 from material_service import MaterialError
 
 

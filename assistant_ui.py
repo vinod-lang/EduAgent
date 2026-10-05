@@ -6,8 +6,9 @@ from structured_generation import Failure
 from assistant_models import PlanError
 from assistant_services import ExecutionContext
 from application import create_application_services
+from security.models import development_legacy_context
 from application.errors import ApplicationError
-services = create_application_services()
+services = create_application_services(context=development_legacy_context())
 plan_request = services.assistant.plan
 validate_plan = services.assistant.validate
 execute_plan = services.assistant.execute

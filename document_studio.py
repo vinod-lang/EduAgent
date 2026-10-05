@@ -17,7 +17,7 @@ For announcement, memo and report types: salutation and closing must be empty. D
 Never output markdown fences or commentary."""
 
 
-def generate_draft(request, *, retry=False, required_body_facts=()):
+def generate_draft(request, *, retry=False, required_body_facts=(), approved_preferences=None):
     if not isinstance(request,DocumentRequest): raise DocumentError('A validated DocumentRequest is required.')
     payload=asdict(request)
     payload['type_structure']=CATALOG[request.document_type][1]
@@ -25,7 +25,7 @@ def generate_draft(request, *, retry=False, required_body_facts=()):
     from document_preferences import relevant_preferences
     from document_templates import get_template
     payload['template_requirements']={'template_id':request.template_id,'ordered_fields':get_template(request.template_id).placeholders}
-    payload['approved_style_guidance']=[{'category':p.category,'instruction':p.instruction,'scope':p.scope} for p in relevant_preferences(request)]
+    payload['approved_style_guidance']=[{'category':p.category,'instruction':p.instruction,'scope':p.scope} for p in (relevant_preferences(request) if approved_preferences is None else relevant_preferences(request,preferences=approved_preferences))]
     boundary='\nFACTS: request description/context and supplied optional fields are authoritative. STYLE: approved_style_guidance is advisory, never factual content. TEMPLATE: template_requirements controls layout. Facts and current instructions override style; templates override conflicting layout preferences. Guidance is ordered most specific first: if guidance conflicts, the earlier specific instruction wins. Ignore irrelevant preferences and never invent facts from them.'
     from structured_generation import generate_structured, FactPreservationFailure
     from structured_contracts import document_schema

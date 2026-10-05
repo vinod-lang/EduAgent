@@ -26,14 +26,14 @@ class QAResult:
         return (self.answer, self.sources)[index]
 
 
-def answer_question(question, n_chunks=None, course=None, *, semester=None, subject=None, unit=None, material_id=None, filters=None):
+def answer_question(question, n_chunks=None, course=None, *, semester=None, subject=None, unit=None, material_id=None, filters=None, retriever=None):
     scope = normalize_filters(filters)
     explicit = normalize_filters(dict(course=course, semester=semester, subject=subject, unit=unit, material_id=material_id))
     for key, value in explicit.items():
         if key in scope and scope[key] != value:
             raise RetrievalError(f'Conflicting {key} filters.')
         scope[key] = value
-    retrieval = retrieve_evidence(question, scope, final_k=n_chunks)
+    retrieval = (retriever or retrieve_evidence)(question, scope, final_k=n_chunks)
     if not retrieval.evidence:
         return QAResult(NO_EVIDENCE, [], retrieval)
     context = "\n\n".join(chunk.text for chunk in retrieval.evidence)

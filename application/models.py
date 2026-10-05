@@ -7,10 +7,7 @@ if TYPE_CHECKING:
     from assistant_models import ActionPlan, Clarification
     from generation_diagnostics import GenerationDiagnostic
 
-@dataclass(frozen=True)
-class ProfessorContext:
-    """Reserved caller context, unused for authorization or current persistence."""
-    professor_id: str | None = None
+from security.models import ProfessorContext
 
 @dataclass(frozen=True)
 class KnowledgeRequest:

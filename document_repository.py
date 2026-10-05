@@ -88,7 +88,7 @@ def persist_versions(conn,document_id,versions):
         conn.execute('INSERT INTO activity_log (action,details,timestamp) VALUES (?,?,?)',('document_version_created','',versions.timestamps[index]))
 
 
-def save_draft(versions,document_id=None,status='Draft'):
+def save_draft(versions,document_id=None,status='Draft',*,ownership=None):
     if not isinstance(versions,DocumentVersions) or status not in ('Draft','Final'):raise DocumentError('Invalid draft/status.')
     now=datetime.now(timezone.utc).isoformat()
     try:
@@ -97,6 +97,9 @@ def save_draft(versions,document_id=None,status='Draft'):
             if document_id is None:
                 document_id=str(uuid.uuid4())
                 conn.execute('INSERT INTO document_drafts VALUES (?,?,?,?,?,?,?)',(document_id,versions.template_id,versions.original.to_json(),versions.current.to_json(),now,now,status))
+                if ownership is not None:
+                    from security.repository import SecurityRepository
+                    SecurityRepository.attach_ownership(conn,'document',document_id,ownership)
             else:
                 row=conn.execute('SELECT original_json,template_id FROM document_drafts WHERE document_id=?',(document_id,)).fetchone()
                 if row is None:raise DocumentStorageError('Saved draft no longer exists.')
@@ -108,11 +111,13 @@ def save_draft(versions,document_id=None,status='Draft'):
     except sqlite3.Error as exc:raise DocumentStorageError('Draft could not be saved to local storage.') from exc
 
 
-def list_drafts():
+def list_drafts(*, authorized_ids=None):
     try:
         with db.material_connection() as conn:
             if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='document_drafts'").fetchone():return []
-            return [dict(row) for row in conn.execute('SELECT document_id,template_id,created_at,updated_at,status FROM document_drafts ORDER BY updated_at DESC')]
+            if authorized_ids is not None and not authorized_ids:return []
+            where=' WHERE document_id IN ('+','.join('?' for _ in authorized_ids)+')' if authorized_ids is not None else ''
+            return [dict(row) for row in conn.execute('SELECT document_id,template_id,created_at,updated_at,status FROM document_drafts'+where+' ORDER BY updated_at DESC',tuple(authorized_ids) if authorized_ids is not None else ())]
     except sqlite3.Error as exc:raise DocumentStorageError('Saved drafts could not be listed.') from exc
 
 

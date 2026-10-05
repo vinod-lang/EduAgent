@@ -7,8 +7,9 @@ from student_ingestion import (MAX_BYTES, MAX_ROWS, MAX_COLUMNS, MAX_SHEETS, Stu
     Mapping, Assessment)
 from student_hub import clear_student_data
 from application import create_application_services
+from security.models import development_legacy_context
 from application.errors import ApplicationError
-service = create_application_services().students
+service = create_application_services(context=development_legacy_context()).students
 parse_student_file = service.parse
 header_candidates = service.headers
 make_raw_table = service.table

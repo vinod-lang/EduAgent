@@ -23,8 +23,8 @@ class DocumentService:
     def edit(self,versions,draft,source='professor_edit',**options): return call(versions.update,draft,source,**options)
     def restore(self,versions,index): return call(versions.restore,index)
     def undo(self,versions): return call(versions.undo)
-    def save(self,versions,document_id=None,status='Draft'):
-        return call(dependency(self.repository,'document_repository').save_draft,versions,document_id,status)
+    def save(self,versions,document_id=None,status='Draft',**options):
+        return call(dependency(self.repository,'document_repository').save_draft,versions,document_id,status,**options)
     def list_drafts(self): return call(dependency(self.repository,'document_repository').list_drafts)
     def load(self,document_id: str) -> DocumentVersions: return call(dependency(self.repository,'document_repository').load_draft,document_id)
     def history(self,document_id): return call(dependency(self.repository,'document_repository').list_versions,document_id)

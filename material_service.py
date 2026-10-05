@@ -83,7 +83,7 @@ def result(success=False, **fields):
     return dict(success=success, warnings=[], **fields)
 
 
-def upload_material(data, original_filename, hierarchy, *, uploads='uploads', vectors=None, extractor=None):
+def upload_material(data, original_filename, hierarchy, *, uploads='uploads', vectors=None, extractor=None, ownership_metadata=None):
     name = validate_filename(original_filename)
     hierarchy = hierarchy_values(hierarchy)
     if not isinstance(data, bytes) or not data:
@@ -94,6 +94,15 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
         raise MaterialError(str(exc)) from exc
     if len(data) > limit:
         raise MaterialError(f'Upload exceeds the {limit / 1024 / 1024:g} MB size limit.')
+    authorization={};ownership=None
+    if ownership_metadata is not None:
+        from security.models import Ownership,Scope
+        try:
+            value=dict(ownership_metadata)
+            ownership=Ownership(value.pop('owner_professor_id'),value.pop('institution_id'),Scope(value.pop('visibility_scope')),value.pop('department_id',None),value.pop('course_id',None))
+            authorization=ownership.vector_metadata()
+            if value:raise ValueError('Unsupported ownership fields.')
+        except (ValueError,TypeError,KeyError) as exc:raise MaterialError('Invalid ownership metadata.') from exc
     digest = content_hash(data)
     try:
         duplicate = db.find_material_hash(digest)
@@ -117,7 +126,7 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
             raise MaterialError('Material contains no usable extracted text.')
         ids = [f'{identity}_chunk_{i}' for i in range(len(chunks))]
         record['chunk_ids'] = json.dumps(ids)
-        metadata = dict(material_id=identity, source=name, **hierarchy)
+        metadata = dict(material_id=identity, source=name, **hierarchy, **authorization)
         vectors = vectors_api(vectors)
         if vectors.get_material_chunks(ids)['ids']:
             raise MaterialError('Generated chunk IDs already exist; upload refused.')
@@ -126,7 +135,7 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
         stored = checked_chunks(vectors, record, ids)
         if set(stored['ids']) != set(ids):
             raise MaterialError('Vector insertion did not persist every owned chunk.')
-        db.register_material(record)
+        db.register_material(record) if ownership is None else db.register_material(record,ownership=ownership)
         return result(True, material=record, vectors_created=len(ids),
                       text_preview=text[:1000] if Path(name).suffix.lower() != '.pdf' else '')
     except Exception as exc:

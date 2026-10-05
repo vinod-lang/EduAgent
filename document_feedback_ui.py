@@ -5,8 +5,9 @@ from document_templates import get_template
 from document_diff import document_diff,comparison_key,CATEGORIES,REUSABLE_CATEGORIES
 from document_preferences import SCOPES
 from application import create_application_services
+from security.models import development_legacy_context
 from application.errors import ApplicationError
-service = create_application_services().documents
+service = create_application_services(context=development_legacy_context()).documents
 approve_preference = service.approve_preference
 list_preferences = service.list_preferences
 update_preference = service.update_preference

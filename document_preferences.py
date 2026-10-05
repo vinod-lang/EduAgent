@@ -56,7 +56,7 @@ def infer_rule(instruction):
     return 'other'
 
 
-def approve_preference(instruction,category='tone_style',scope='document_type',document_type=None,template_id=None,tone=None,rule_key=None,source_document_id=None,source_before_id=None,source_after_id=None):
+def approve_preference(instruction,category='tone_style',scope='document_type',document_type=None,template_id=None,tone=None,rule_key=None,source_document_id=None,source_before_id=None,source_after_id=None,*,ownership=None):
     now=datetime.now(timezone.utc).isoformat();identity=str(uuid.uuid4())
     preference=Preference(identity,category,instruction,scope,document_type,template_id,tone,rule_key or infer_rule(clean(instruction,'Preference instruction',2000,True)),source_document_id,source_before_id,source_after_id,True,True,now,now)
     try:
@@ -67,17 +67,22 @@ def approve_preference(instruction,category='tone_style',scope='document_type',d
                     if not conn.execute('SELECT 1 FROM document_versions WHERE document_id=? AND version_id=?',(source_document_id,version)).fetchone():raise DocumentStorageError('Preference source versions do not belong to the selected document. Save history first.')
             values=tuple(getattr(preference,key) for key in preference.__dataclass_fields__)
             conn.execute('INSERT INTO document_preferences VALUES ('+','.join('?' for _ in values)+')',values)
+            if ownership is not None:
+                from security.repository import SecurityRepository
+                SecurityRepository.attach_ownership(conn,'preference',identity,ownership)
             _event(conn,'preference_approved')
         return identity
     except sqlite3.Error as exc:raise DocumentStorageError('Preference could not be approved.') from exc
 
 
-def list_preferences():
+def list_preferences(*, authorized_ids=None):
     try:
         with db.material_connection() as conn:
             if not has_table(conn,'document_preferences'):return ()
             result=[]
-            for row in conn.execute('SELECT * FROM document_preferences ORDER BY updated_at DESC,preference_id'):
+            if authorized_ids is not None and not authorized_ids:return ()
+            where=' WHERE preference_id IN ('+','.join('?' for _ in authorized_ids)+')' if authorized_ids is not None else ''
+            for row in conn.execute('SELECT * FROM document_preferences'+where+' ORDER BY updated_at DESC,preference_id',tuple(authorized_ids) if authorized_ids is not None else ()):
                 data=dict(row);data['approved']=bool(data['approved']);data['active']=bool(data['active']);result.append(Preference(**data))
             return tuple(result)
     except sqlite3.Error as exc:raise DocumentStorageError('Preferences could not be read.') from exc
@@ -105,8 +110,8 @@ def delete_preference(identity):
     except sqlite3.Error as exc:raise DocumentStorageError('Preference deletion failed.') from exc
 
 
-def relevant_preferences(request):
-    matches=[p for p in list_preferences() if p.approved and p.active and (p.document_type is None or p.document_type==request.document_type) and (p.template_id is None or p.template_id==request.template_id) and (p.tone is None or p.tone==request.tone)]
+def relevant_preferences(request, *, preferences=None):
+    matches=[p for p in (list_preferences() if preferences is None else preferences) if p.approved and p.active and (p.document_type is None or p.document_type==request.document_type) and (p.template_id is None or p.template_id==request.template_id) and (p.tone is None or p.tone==request.tone)]
     # Specific scope first; tone/type specificity then newest explicit approval.
     matches.sort(key=lambda p:({'template':3,'document_type':2,'general':1}[p.scope],bool(p.document_type),bool(p.tone),p.updated_at,p.preference_id),reverse=True)
     selected=[];seen=set();texts=set()

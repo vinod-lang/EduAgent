@@ -7,8 +7,9 @@ from dashboard import natural_key
 from assessment_spec import AssessmentScope,AssessmentSpec,AssessmentError,TYPES,DIFFICULTIES,BLOOMS
 from assessment_export import AssessmentExportError
 from application import create_application_services
+from security.models import development_legacy_context
 from application.errors import ApplicationError
-services = create_application_services()
+services = create_application_services(context=development_legacy_context())
 generate_assessment = services.assessments.generate
 extract_pyq = services.assessments.extract_pyq
 assessment_pdf_bytes = services.assessments.pdf
