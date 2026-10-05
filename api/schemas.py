@@ -102,3 +102,14 @@ class ResolveEdit(Transport):
     update_confirmed:bool
     replacements:dict[str,str]=Field(default_factory=dict)
 class PreferenceUpdate(Transport):instruction:str|None=None;active:bool|None=None
+
+class AssistantHandoff(Transport):action_id:str=Field(min_length=1,max_length=32);destination:Literal['ASSESSMENT','DOCUMENT','KNOWLEDGE_SCOPE']
+class HandoffResponse(Handle):destination:Literal['ASSESSMENT','DOCUMENT','KNOWLEDGE_SCOPE']
+class SafeActionOutcome(ActionOutcome):
+    destination:Literal['/home','/library/upload','/knowledge','/assessment','/documents','/students','/activity']|None=None
+    answer:str|None=None;grounded:bool|None=None;sources:list[str]=Field(default_factory=list);student_count:int|None=None
+class SafeExecutionResponse(Transport):status:str;results:list[SafeActionOutcome]
+class ActivityItem(Transport):action:str;timestamp:str;category:str
+class ActivityPage(Transport):items:list[ActivityItem];next_cursor:int|None
+
+class KnowledgeScopeResponse(Transport):question:str;filters:dict[str,str]

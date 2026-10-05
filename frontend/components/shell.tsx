@@ -6,10 +6,10 @@ import { BookOpen, House, Library, ClipboardList, FileText, ChartNoAxesCombined,
 import { useAuth } from "@/features/auth";
 import { Loading, ErrorNotice } from "@/components/states";
 import { APIError } from "@/lib/api";
-const navigation = [
+const navigation: {title:string;href:string;icon:typeof House;upcoming?:boolean}[] = [
   { title: "Home", href: "/home", icon: House }, { title: "Courses", href: "/courses", icon: Library }, { title: "Material library", href: "/library", icon: Library }, { title: "Knowledge", href: "/knowledge", icon: BookOpen },
   { title: "Assessment Studio", href: "/assessment", icon: ClipboardList }, { title: "Document Studio", href: "/documents", icon: FileText },
-  { title: "Student Analytics", href: "/students", icon: ChartNoAxesCombined }, { title: "Smart Assistant", href: "/workspace/assistant", icon: Workflow, upcoming: true }, { title: "Activity", href: "/workspace/activity", icon: ListChecks, upcoming: true },
+  { title: "Student Analytics", href: "/students", icon: ChartNoAxesCombined }, { title: "Smart Assistant", href: "/assistant", icon: Workflow }, { title: "Activity", href: "/activity", icon: ListChecks },
 ];
 function SignInRequired() { const router = useRouter(); useEffect(() => { router.replace("/login"); }, [router]); return <Loading label="Sign in to access your professor workspace."/>; }
 export function ProtectedShell({ children }: { children: React.ReactNode }) {

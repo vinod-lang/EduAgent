@@ -142,6 +142,16 @@ class SecurityRepository:
         if action not in ACTIONS or (kind is not None and kind not in KINDS):raise ValueError('Invalid audit metadata.')
         if identity is not None:opaque(identity)
         with self.connection() as conn:self._audit(conn,actor.professor_id,action,kind,identity)
+    def activity_page(self,actor,*,before=None,limit=20,actions=None):
+        # Actor predicate applies before the cursor/filter. Never accept SQL fragments.
+        where='actor_professor_id=?';values=[actor.professor_id]
+        if before is not None:where+=' AND id<?';values.append(before)
+        if actions is not None:
+            if not actions:return []
+            where+=' AND action IN ('+','.join('?' for _ in actions)+')';values.extend(actions)
+        with self.connection() as conn:
+            if not self.has(conn,'security_activity'):return []
+            return [dict(row) for row in conn.execute('SELECT id,action,timestamp FROM security_activity WHERE '+where+' ORDER BY id DESC LIMIT ?',(*values,limit+1))]
     def activity(self,actor,limit=20):
         with self.connection() as conn:
             if not self.has(conn,'security_activity'):return []

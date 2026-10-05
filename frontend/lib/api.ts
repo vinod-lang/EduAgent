@@ -72,7 +72,7 @@ export class APIClient {
   documents(signal?:AbortSignal){return this.request<DraftMetadata[]>("/documents",undefined,signal);}
   loadDocument(id:string,signal?:AbortSignal){return this.request<StudioDocument>(`/documents/${encodeURIComponent(id)}`,undefined,signal);}
   generateDocument(body:DocumentRequest,signal?:AbortSignal){return this.request<StudioDocument>("/documents/generate",body,signal);}
-  reviewDocument(handle:string){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}`);}
+  reviewDocument(handle:string,signal?:AbortSignal){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}`,undefined,signal);}
   editDocument(handle:string,body:DocumentEdit){return this.mutate<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}`,"PATCH",body);}
   saveDocument(handle:string,status:'Draft'|'Final'){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/save`,{status});}
   refineDocument(handle:string,instruction:string,signal?:AbortSignal){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/refine`,{instruction},signal);}
@@ -94,7 +94,7 @@ export class APIClient {
   uploadStudents(file:File){const form=new FormData();form.append("file",file);return this.mutate<{handle:string;sheets:string[]}>("/students/upload","POST",form);}
   previewStudents(handle:string,sheet:string,header_row:number){return this.request<import("@/types/students").Preview>(`/students/${encodeURIComponent(handle)}/preview`,{sheet,header_row});}
   normalizeStudents(handle:string,mapping:import("@/types/students").Mapping){return this.request<import("@/types/students").Normalized>(`/students/${encodeURIComponent(handle)}/normalize`,mapping);}
-  analyzeStudents(handle:string,filters:import("@/types/students").Filters){return this.request<import("@/types/students").Analysis>(`/students/${encodeURIComponent(handle)}/analyze`,filters);}
+  analyzeStudents(handle:string,filters:import("@/types/students").Filters,signal?:AbortSignal){return this.request<import("@/types/students").Analysis>(`/students/${encodeURIComponent(handle)}/analyze`,filters,signal);}
   studentDetail(handle:string,index:number,filters:import("@/types/students").Filters){return this.request<import("@/types/students").Detail>(`/students/${encodeURIComponent(handle)}/detail`,{index,marks_threshold:filters.marks_threshold,attendance_threshold:filters.attendance_threshold});}
   clearStudents(handle:string){return this.mutate<{status:string}>(`/students/${encodeURIComponent(handle)}`,"DELETE");}
   async exportStudents(handle:string,filters:import("@/types/students").Filters){
@@ -102,6 +102,16 @@ export class APIClient {
     let response:Response;try{response=await run();if(response.status===403){const error=await parseError(response.clone());if(error.code==="CSRF_REJECTED"){this.csrf=null;await this.ensureCSRF();response=await run();}}}catch{throw new APIError(0,"NETWORK_ERROR");}
     if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
   }
+  studentWorkspaces(signal?:AbortSignal){return this.request<{handle:string}[]>("/students/workspaces",undefined,signal);}
+  reviewStudents(handle:string,signal?:AbortSignal){return this.request<import("@/types/students").Normalized>(`/students/${encodeURIComponent(handle)}/review`,undefined,signal);}
+  planAssistant(request:string,student_handle:string|null,signal?:AbortSignal){return this.request<import("@/types/assistant").Plan>("/assistant/plan",{request,student_handle},signal);}
+  previewAssistant(handle:string,signal?:AbortSignal){return this.request<import("@/types/assistant").Preview>(`/assistant/${encodeURIComponent(handle)}/preview`,undefined,signal);}
+  executeAssistant(handle:string,retry:boolean,signal?:AbortSignal){return this.request<{status:string}>(`/assistant/${encodeURIComponent(handle)}/execute`,{confirmed:true,retry},signal);}
+  assistantResults(handle:string,signal?:AbortSignal){return this.request<import("@/types/assistant").Execution>(`/assistant/${encodeURIComponent(handle)}/results`,undefined,signal);}
+  handoffAssistant(handle:string,action_id:string,destination:'ASSESSMENT'|'DOCUMENT'|'KNOWLEDGE_SCOPE'){return this.request<{handle:string;destination:'ASSESSMENT'|'DOCUMENT'|'KNOWLEDGE_SCOPE'}>(`/assistant/${encodeURIComponent(handle)}/handoff`,{action_id,destination});}
+  discardAssistant(handle:string){return this.mutate<{status:string}>(`/assistant/${encodeURIComponent(handle)}`,"DELETE");}
+  activityPage(category='All',before:number|null=null,signal?:AbortSignal){const params=new URLSearchParams({category});if(before!==null)params.set('before',String(before));return this.request<import("@/types/assistant").ActivityPage>(`/activity/page?${params}`,undefined,signal);}
+  knowledgeScope(handle:string,signal?:AbortSignal){return this.request<{question:string;filters:Record<string,string>}>(`/knowledge-scopes/${encodeURIComponent(handle)}`,undefined,signal);}
   async login(identity: string) { const data = await this.raw<{ csrf_token: string }>("/auth/dev-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identity }) }); this.csrf = data.csrf_token; }
   async logout() { await this.request("/auth/logout", {}); this.clear(); }
   me(signal?: AbortSignal) { return this.request<Professor>("/auth/me", undefined, signal); }

@@ -41,3 +41,8 @@ class StudentAnalysis:
             if isinstance(value, (list, tuple)): return [safe(v) for v in value]
             return value
         return safe({'students': self.displayed.to_dict(orient='records'), 'summary': self.summary})
+
+@dataclass(frozen=True)
+class KnowledgeHandoff:
+    request: KnowledgeRequest
+    ownership: object

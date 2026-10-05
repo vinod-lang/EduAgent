@@ -31,6 +31,10 @@ class Workspaces:
             with self.lock:
                 if key not in self.rows:raise NotFoundError()
                 self.rows[key]=(principal.session_key,kind,principal.expires_at,value)
+    def handles(self,principal,kind):
+        with self.lock:
+            self._purge()
+            return [key for key,row in self.rows.items() if row[0]==principal.session_key and row[1]==kind]
     def clear(self,principal):
         with self.lock:
             for key in list(self.rows):

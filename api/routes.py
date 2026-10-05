@@ -1,7 +1,7 @@
 """Routes convert explicit transports and delegate all domain work to services."""
 from dataclasses import replace
 import secrets
-from fastapi import APIRouter,Depends,Request,Response,UploadFile,File,Form
+from fastapi import APIRouter,Depends,Request,Response,UploadFile,File,Form,Query
 from application.errors import ValidationError,NotFoundError
 from application.models import MaterialUpload,KnowledgeRequest
 from security.sessions import AuthenticationError,CSRFError
@@ -205,6 +205,15 @@ def delete_preference(identity:str,request:Request,p=Depends(principal),api=Depe
 def students_upload(request:Request,file:UploadFile=File(...),p=Depends(principal),api=Depends(services)):
     book=invoke(request,api.students.parse,upload_bytes(file),file.filename or '',context=p.context)
     return {'handle':request.app.state.workspaces.put(p,'student-book',book),'sheets':[s.name for s in book.sheets]}
+@router.get('/students/workspaces',tags=['Students'],response_model=list[S.Handle],summary='Current session dataset handles only; no student records')
+def student_workspaces(request:Request,p=Depends(principal),api=Depends(services)):
+    api.students.actor(p.context)
+    return [{'handle':key} for key in request.app.state.workspaces.handles(p,'student-data')]
+@router.get('/students/{handle}/review',tags=['Students'],response_model=S.StudentNormalized)
+def student_review(handle:str,request:Request,p=Depends(principal),api=Depends(services)):
+    with request.app.state.workspaces.item(p,handle,'student-data') as a:
+        a=invoke(request,api.students.review,a,context=p.context)
+        return {'handle':handle,'validation':a.dataset.summary,'issues':[{'row':i.row,'code':i.code,'severity':i.severity} for i in a.dataset.issues[:50]]}
 @router.post('/students/{handle}/preview',tags=['Students'],summary='Bounded local preview and deterministic mapping suggestions')
 def student_preview(handle:str,body:S.StudentPreview,request:Request,p=Depends(principal),api=Depends(services)):
     from application.models import StudentAnalysis
@@ -283,6 +292,28 @@ def assistant_execute(handle:str,body:S.Execute,request:Request,p=Depends(princi
         if prior and not body.retry:raise ValidationError()
         result=invoke(request,api.assistant.execute,a,ec,context=p.context,previous=prior,retry=body.retry)
         request.app.state.workspaces.update(p,handle,'plan',(a,ec,result));return P.execution(result)
+@router.get('/assistant/{handle}/results',tags=['Assistant'],response_model=S.SafeExecutionResponse)
+def assistant_results(handle:str,request:Request,p=Depends(principal),api=Depends(services)):
+    with request.app.state.workspaces.item(p,handle,'plan') as (plan,ec,report):
+        if report is None:raise NotFoundError()
+        return invoke(request,api.assistant.results,report,ec,context=p.context)
+@router.post('/assistant/{handle}/handoff',tags=['Assistant'],response_model=S.HandoffResponse)
+def assistant_handoff(handle:str,body:S.AssistantHandoff,request:Request,p=Depends(principal),api=Depends(services)):
+    with request.app.state.workspaces.item(p,handle,'plan') as (plan,ec,report):
+        workspace=invoke(request,api.assistant.handoff,plan,report,body.action_id,body.destination,context=p.context)
+        key=request.app.state.workspaces.put(p,{'ASSESSMENT':'assessment','DOCUMENT':'document','KNOWLEDGE_SCOPE':'knowledge-scope'}[body.destination],workspace)
+        return {'handle':key,'destination':body.destination}
+@router.get('/knowledge-scopes/{handle}',tags=['Knowledge'],response_model=S.KnowledgeScopeResponse)
+def knowledge_scope(handle:str,request:Request,p=Depends(principal),api=Depends(services)):
+    with request.app.state.workspaces.item(p,handle,'knowledge-scope') as workspace:
+        a=invoke(request,api.knowledge.review_scope,workspace,context=p.context)
+        return dict(question=a.question,filters=dict(a.filters))
+@router.delete('/assistant/{handle}',tags=['Assistant'],response_model=S.StatusResponse)
+def assistant_discard(handle:str,request:Request,p=Depends(principal)):
+    request.app.state.workspaces.remove(p,handle,'plan');return {'status':'discarded'}
+@router.get('/activity/page',tags=['Activity'],response_model=S.ActivityPage)
+def activity_page(request:Request,p=Depends(principal),api=Depends(services),before:int|None=Query(default=None,ge=1),limit:int=Query(default=20,ge=1,le=50),category:str='All'):
+    return invoke(request,api.activity.page,context=p.context,before=before,limit=limit,category=category)
 @router.get('/dashboard',tags=['Dashboard'],summary='Authorized deterministic professor workspace',response_model=S.DashboardResponse)
 def dashboard(request:Request,p=Depends(principal),api=Depends(services)):
     a=invoke(request,api.dashboard.workspace,context=p.context)

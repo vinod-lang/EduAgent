@@ -989,3 +989,29 @@ Search, filters and thresholds apply explicitly through the backend. CSV exports
 Book/dataset handles remain unguessable, session/professor bound and ephemeral. Refreshing loses the browser link; no local/session storage is used. Clear requires confirmation and invalidates student-dependent assistant plans. Replacement requires clearing confirmation before choosing a new file. Logout invalidates all session workspaces. Student records remain inside this dedicated workspace; Home exposes only its navigation action. Smart Assistant stays Upcoming.
 
 All HTTP tests and browser checks use synthetic isolated storage. Production SQLite, uploads and Chroma must stay byte-for-byte unchanged; no Chroma client initialization or AI inference is required. Streamlit remains the unchanged reference workflow.
+
+## Build 26 — Smart Assistant V3 and Activity Center
+
+`/assistant` is a professor-controlled request → typed plan → deterministic validation → preview → explicit approval → execution workspace. Planning uses the existing centralized provider/structured generation and five-action allowlist. No planner-controlled functions, arbitrary tools, shell commands, external operations or new professor capabilities are introduced. The server retains executable plans; the browser cannot submit replacement plan JSON. Editing a request/dataset selection makes its preview stale and disables execution. Clarifications require a revised request/new plan; refusals cannot execute.
+
+| Existing action | Application authority | Authorization | Web result/destination |
+|---|---|---|---|
+| ASK_KNOWLEDGE | ScopedKnowledge | Current authorized material/evidence access | Grounded answer or deterministic no-evidence result; Knowledge scope handoff |
+| CREATE_ASSESSMENT | ScopedAssessments | Current actor and authorized evidence | Validated session artifact; Assessment Studio |
+| CREATE_DOCUMENT | ScopedDocuments | Current actor/private ownership, approved preferences | Validated fact-aware draft; Document Studio |
+| ANALYZE_STUDENTS | ScopedStudents | Current actor and private session dataset | Aggregate count; existing local Student Analytics |
+| NAVIGATE | Existing allowlisted page registry | Current actor | Fixed known workspace destination |
+
+The registry currently contains only read/generate/local navigation actions (no persistent mutations). The HTTP execution contract nevertheless requires explicit confirmation for every plan; failed-action retry requires fresh professor approval in the web UI. Only assessment → document dependencies are supported, carrying an allowlisted assessment summary rather than questions/answer keys. Failed prerequisites block dependents; independent successes remain completed. Retry reauthorizes cached evidence and retains completed actions. Action failures remain coarse safe messages instead of raw service exceptions.
+
+Execution is synchronous. Stop waiting aborts browser waiting, not backend work. The UI marks execution state uncertain and requires checking stored results before retry. Plan/result/handoff handles are unguessable and session-bound. There is no new persistent assistant history. Existing original request/typed plans and results live only in bounded session workspaces; no prompts, rejected model responses, student rows, retrieved chunks or preference/fact values are added to Activity or persistent conversation storage. Discarding a plan does not discard an already opened studio draft; studio discard/logout/expiry owns its lifecycle.
+
+Typed ASSESSMENT, DOCUMENT and KNOWLEDGE_SCOPE handoffs are created only from completed actions with a matching server-owned plan/report fingerprint. Current actor, report ownership and referenced evidence are rechecked. Destination compatibility is enforced server-side. Only the handle enters the destination URL, never document/question content or executable JSON. Assessment Studio owns editing/validation/keys/export; Document Studio owns edits/facts/versions/preferences/save/export. Assessment review/export also rechecks source ownership after handoff. Knowledge handoff loads the question/scope without automatically generating another answer.
+
+Student datasets are selected from current-session handles, with no student rows returned merely for selection. The existing narrow student grammar executes deterministic analytics without AI. Other permitted planning sees availability/operation metadata only; loaded identifying requests are rejected locally. Assistant results show counts only and open the authorized ephemeral Student Analytics dataset for actual rows/detail/export. Clearing the dataset invalidates dependent plans; logout clears all session workspaces. Unique-marker tests capture provider inputs and prove student IDs/names/marks/attendance never enter them.
+
+`/activity` displays existing actor-scoped safe event labels, categories and ISO timestamps. No resource IDs, paths, student/document/fact/question content, prompts, responses or credentials are projected. Unknown action codes become “Recorded activity”; malformed times become “Time unavailable”. Existing meaningful events are reused; no per-click logging or invented assistant/student events are added. Categories derive only from allowlisted event codes.
+
+Pagination uses actor/filter predicates before an ID-descending cursor, bounded to 50 events (web default 20). Newly inserted events do not shift older pages. Numeric cursors are transport state, not displayed identities. Administrators cannot see another professor's private actor history. Home links to the Activity Center and active Assistant; legacy Upcoming URLs redirect to completed workspaces.
+
+All Build 26 inference tests/browser smoke use mocks and isolated synthetic runtime. Production SQLite/uploads/Chroma inventory must remain byte-for-byte unchanged. Streamlit, AI/embedding/RAG defaults and the existing domain validators remain intact.

@@ -20,7 +20,7 @@ def install(app):
                     return error(request,'PDF_FONT_UNAVAILABLE','PDF export needs a suitable local font for this document. Ask the administrator to configure the PDF font, or export DOCX.',422)
                 cause=cause.__cause__
         response=error(request,exc.code,exc.message,STATUS.get(exc.code,400))
-        if request.url.path.startswith(('/api/v1/assessments','/api/v1/documents','/api/v1/document-workspaces')) and exc.generation_diagnostic is not None:
+        if request.url.path.startswith(('/api/v1/assessments','/api/v1/documents','/api/v1/document-workspaces','/api/v1/assistant')) and exc.generation_diagnostic is not None:
             from generation_diagnostics import failed
             from structured_generation import Failure
             try:diagnostic=failed(exc.generation_diagnostic.category,exc.generation_diagnostic.attempts_used)

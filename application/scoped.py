@@ -61,6 +61,12 @@ class ScopedMaterials(Protected):
 
 class ScopedKnowledge(Protected):
     def __init__(self,base,policy,collection_factory):super().__init__(policy);self.base=base;self.collection_factory=collection_factory
+    def review_scope(self,workspace,*,context=None):
+        from .models import KnowledgeHandoff
+        if not isinstance(workspace,KnowledgeHandoff):raise AccessDeniedError()
+        self.policy.require(context,Action.READ,workspace.ownership,kind='document')
+        if workspace.request.filters.get('material_id'):self.policy.resource(context,Action.READ,'material',workspace.request.filters['material_id'])
+        return workspace.request
     def collection(self,context,filters=None):
         ids=self.policy.visible_ids(context,'material')
         if filters and filters.get('material_id'):
@@ -86,6 +92,7 @@ class ScopedAssessments(Protected):
     def review(self,workspace,*,context=None):
         if not isinstance(workspace,AssessmentWorkspace):raise AccessDeniedError()
         self.policy.require(context,Action.READ,workspace.ownership,kind='document')
+        for chunk in workspace.result.evidence:self.policy.resource(context,Action.READ,'material',chunk.material_id)
         return workspace
     def edit(self,workspace,edits,revision,*,context=None):
         self.review(workspace,context=context)
@@ -96,7 +103,7 @@ class ScopedAssessments(Protected):
         return replace(workspace,result=result,revision=workspace.revision+1)
     def extract_pyq(self,data,filename,*,context=None):self.actor(context);return self.base.extract_pyq(data,filename)
     def export(self,workspace,format='pdf',*,context=None,answer_key=False):
-        if not isinstance(workspace,AssessmentWorkspace):raise AccessDeniedError()
+        self.review(workspace,context=context)
         self.policy.require(context,Action.EXPORT,workspace.ownership,kind='document')
         return self.base.export(workspace.result,format,answer_key=answer_key)
 
@@ -192,6 +199,10 @@ class ScopedStudents(Protected):
     def suggest(self,table,*,context=None):self.actor(context);return self.base.suggest(table)
     def normalize(self,table,mapping,*,context=None):
         return StudentWorkspace(self.base.normalize(table,mapping) if self.actor(context) else None,self.private(context))
+    def review(self,workspace,*,context=None):
+        if not isinstance(workspace,StudentWorkspace):raise AccessDeniedError()
+        self.policy.require(context,Action.READ,workspace.ownership,kind='document')
+        return workspace
     def analyze(self,workspace,thresholds=None,*,context=None,view='All',search=''):
         if not isinstance(workspace,StudentWorkspace):raise AccessDeniedError()
         self.policy.require(context,Action.READ,workspace.ownership,kind='document')
@@ -213,6 +224,21 @@ class ScopedActivity(Protected):
             except (ValueError,TypeError):timestamp='Time unavailable'
             safe.append({'actor_professor_id':actor.professor_id,'action':ACTIONS.get(row['action'],'Recorded activity'),'timestamp':timestamp})
         return safe
+    def page(self,*,context=None,before=None,limit=20,category='All'):
+        from .activity_categories import category as classify,CATEGORIES
+        from dashboard import ACTIONS
+        from datetime import datetime
+        actor=self.actor(context)
+        if type(limit) is not int or not 1<=limit<=50 or before is not None and (type(before) is not int or before<1) or category not in ('All',*CATEGORIES):raise ValidationError()
+        actions=None if category=='All' else tuple(code for code in ACTIONS if classify(code)==category)
+        rows=call(self.security.activity_page,actor,before=before,limit=limit,actions=actions)
+        items=[]
+        for row in rows[:limit]:
+            try:timestamp=datetime.fromisoformat(row['timestamp']).isoformat()
+            except (ValueError,TypeError):timestamp='Time unavailable'
+            known=row['action'] in ACTIONS
+            items.append(dict(action=ACTIONS.get(row['action'],'Recorded activity'),timestamp=timestamp,category=classify(row['action']) if known else 'Workspace'))
+        return dict(items=items,next_cursor=rows[limit-1]['id'] if len(rows)>limit else None)
     def record(self,action,*,context=None,resource_type=None,resource_id=None):
         actor=self.actor(context)
         if resource_id:self.policy.resource(context,Action.READ,resource_type,resource_id)
@@ -270,6 +296,46 @@ class ScopedAssistant(Protected):
             return ActionResult(action.action_id,'completed',action.action_type,'Completed; professor review required.',payload)
         report=call(execute_plan,plan,execution_context,previous=prior,retry=retry,dispatcher=dispatch)
         return ScopedExecutionReport(report,self.private(context))
+
+    def _report(self,report,context):
+        self.actor(context)
+        if not isinstance(report,ScopedExecutionReport):raise AccessDeniedError()
+        self.policy.require(context,Action.READ,report.ownership,kind='document')
+        for outcome in report.results:
+            if outcome.status!='completed':continue
+            evidence=outcome.payload.retrieval.evidence if outcome.result_type=='ASK_KNOWLEDGE' else outcome.payload.evidence if outcome.result_type=='CREATE_ASSESSMENT' else ()
+            for chunk in evidence:self.policy.resource(context,Action.READ,'material',chunk.material_id)
+        return report
+    def results(self,report,execution_context,*,context=None):
+        self._report(report,context);self._student(execution_context,context)
+        paths={'Professor Dashboard':'/home','Upload Content':'/library/upload','Ask a Question':'/knowledge','Assessment Studio':'/assessment','Document Studio':'/documents','Student Data Hub':'/students','Activity Log':'/activity'}
+        outcomes=[]
+        for outcome in report.results:
+            item=dict(action_id=outcome.action_id,status=outcome.status,type=outcome.result_type,summary=outcome.safe_summary)
+            if outcome.status=='completed':
+                if outcome.result_type=='ASK_KNOWLEDGE':
+                    item.update(answer=outcome.payload.answer,grounded=bool(outcome.payload.retrieval.evidence),sources=[s.label for s in outcome.payload.retrieval.sources],destination='/knowledge')
+                elif outcome.result_type=='NAVIGATE':item['destination']=paths[outcome.payload]
+                elif outcome.result_type in ('CREATE_DOCUMENT','CREATE_ASSESSMENT'):item['destination']='/documents' if outcome.result_type=='CREATE_DOCUMENT' else '/assessment'
+                elif outcome.result_type=='ANALYZE_STUDENTS':
+                    frame,summary=outcome.payload
+                    item.update(student_count=len(frame),destination='/students')
+            outcomes.append(item)
+        return dict(status=report.status,results=outcomes)
+    def handoff(self,plan,report,action_id,destination,*,context=None):
+        self._report(report,context)
+        if report.report.plan_id!=plan.plan_id or report.report.fingerprint!=plan.fingerprint:raise ValidationError()
+        outcome=next((v for v in report.results if v.action_id==action_id and v.status=='completed'),None)
+        action=next((v for v in plan.actions if v.action_id==action_id),None)
+        if outcome is None or action is None:raise NotFoundError()
+        if destination=='KNOWLEDGE_SCOPE' and outcome.result_type=='ASK_KNOWLEDGE':
+            from .models import KnowledgeHandoff
+            return KnowledgeHandoff(KnowledgeRequest(action.parameters['question'],action.parameters.get('filters',{})),report.ownership)
+        if destination=='ASSESSMENT' and outcome.result_type=='CREATE_ASSESSMENT':
+            return AssessmentWorkspace(outcome.payload,report.ownership)
+        if destination=='DOCUMENT' and outcome.result_type=='CREATE_DOCUMENT':
+            return DocumentWorkspace(self.services.documents.base.generated(outcome.payload,action.parameters.get('template_id','standard_academic')),report.ownership)
+        raise ValidationError()
 
 @dataclass
 class ScopedApplicationServices:
