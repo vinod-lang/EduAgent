@@ -757,3 +757,67 @@ No in-memory limiter is claimed to be production-safe. Long-running operations a
 synchronous worker calls; future SSE/job APIs should wrap application results with
 cancellation and safe status contracts. No background workers, token streaming,
 Redis, frontend, production SSO, model routing or deployment is introduced.
+
+## Build 21: professor web workspace
+
+`frontend/` is a separate Next.js App Router application (React, strict TypeScript,
+Tailwind and Lucide). FastAPI remains the authority for authorization, persistence,
+retrieval and generation. Streamlit remains the reference workflow for features
+marked Upcoming in the web workspace. No backend contract changed in this build.
+
+### Local setup
+
+Use an existing supported Node environment and run `npm ci` inside `frontend/`.
+Copy `frontend/.env.example` to the ignored `frontend/.env.local`; configure the
+backend origin and permitted development identity aliases. Start the existing
+FastAPI development bootstrap with an isolated/local development identity mapping,
+then `npm run dev` in `frontend/`. Use `http://127.0.0.1:3000` consistently and permit
+that exact Origin in backend CORS. Do not mix localhost and 127.0.0.1 for cookies.
+The development key must match the backend and remain server-only; never use a
+NEXT_PUBLIC key. The alias selector is local development authentication, not
+institutional authentication. Production builds disable this sign-in route even
+if development flags are supplied. Institutional login remains future work.
+
+The Next server proxies `/api/v1` to FastAPI. Its development-login route checks
+same-origin JSON and configured aliases, injects the server-only development key,
+and forwards the backend HttpOnly cookie. Other mutations use an in-memory CSRF
+token fetched from the backend. No identity/token/question/answer is stored in
+localStorage or sessionStorage. Session verification gates protected routes and
+backend 401 responses clear the client authentication state. Backend authorization
+is mandatory regardless of client filtering.
+
+### Product scope and operation contracts
+
+Home reads real dashboard counts, recent material/activity and saved-document
+metadata. The library is read-only and filters authorized material hierarchy.
+Knowledge supports hierarchy/material scope, loading, no evidence, safe failures,
+plain-text escaped answers and source references. Saved-document metadata currently
+has no title; generic labels describe entries rather than inventing document titles.
+Assessment, documents, student analytics, assistant and activity navigation explicitly
+identify forthcoming web workflows; they do not pretend to execute operations.
+
+Knowledge generation remains synchronous. Stop waiting aborts the browser request;
+it does not claim to cancel backend inference. Failed generation is never retried
+silently. A future asynchronous operation requires a backend-owned operation ID,
+authorized status/cancellation contract and explicit timeout semantics.
+
+Future Assistant artifact handoff should use an authorized server-owned artifact
+handle and typed destination (assessment/document), not client-supplied executable
+function names or raw content in URLs. This build does not implement that handoff.
+
+### Verification
+
+Run `npm test`, `npm run lint`, `npm run typecheck`, `npm run build` in frontend.
+Tests mock API boundaries and cover auth, CSRF, safe errors, route protection,
+dashboard, library, Q&A and development-login secrecy. Axe component checks cover
+semantics; jsdom cannot verify rendered color contrast. An additional Chrome smoke
+used an isolated FastAPI service with synthetic material and mocked generation,
+checking real cookies, CSRF, source rendering, mobile drawer/Escape, overflow and
+logout. Production storage was not used. No live model calls were needed.
+
+Pinned dependencies and package-lock make installation reproducible. npm currently
+reports five high advisories in the development ESLint transitive braces/micromatch
+chain; its proposed fix downgrades the Next lint configuration across major versions.
+Do not force that downgrade. Track an upstream compatible fix. Production dependency
+audit is checked separately. Build output, node_modules and private env files stay
+ignored. This frontend is not a deployment or an institutional authentication rollout.

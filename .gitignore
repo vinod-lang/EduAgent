@@ -54,3 +54,11 @@ eduagent.db
 
 # Isolated local web-backend development runtime
 /.runtime/
+
+# Frontend dependencies/build/test caches
+/frontend/node_modules/
+/frontend/.next/
+/frontend/coverage/
+/frontend/*.tsbuildinfo
+/frontend/playwright-report/
+/frontend/test-results/
