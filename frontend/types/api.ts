@@ -8,3 +8,9 @@ export interface Source { source: string; material_id: string | null }
 export interface Answer { answer: string; grounded: boolean; sources: Source[] }
 export type Scope = Partial<Record<"course" | "semester" | "subject" | "unit" | "material_id", string>>;
 export interface KnowledgeRequest { question: string; filters: Scope }
+
+export type Hierarchy = Record<"course"|"semester"|"subject"|"unit", string>;
+export interface UploadResult { success: boolean; duplicate: boolean; material: Material|null; message: string }
+export interface DeleteResult { success: boolean; sqlite_deleted: boolean|null; vectors_deleted: number|null; file_deleted: boolean|null }
+
+export interface MaterialDetail extends Material { visibility: "PRIVATE"|"COURSE"|"DEPARTMENT"|"INSTITUTE"; can_manage: boolean }

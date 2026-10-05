@@ -821,3 +821,70 @@ chain; its proposed fix downgrades the Next lint configuration across major vers
 Do not force that downgrade. Track an upstream compatible fix. Production dependency
 audit is checked separately. Build output, node_modules and private env files stay
 ignored. This frontend is not a deployment or an institutional authentication rollout.
+
+## Build 22: course and material workspace
+
+The web frontend now has real `/courses`, `/courses/[course]`, `/library`,
+`/library/upload` and `/library/[identity]` workflows. Course projections derive
+solely from authorized material metadata; an empty course is not invented, and
+coverage is registered material coverage rather than enrollment or learning progress.
+Semester/Subject/Unit groups use collapsible semantic navigation. Course names are
+encoded in routes and decoded once; material operations always use stable IDs.
+
+The library searches metadata, cascades Course → Semester → Subject → Unit filters,
+and pages the authorized response in deterministic groups of 20 (timestamp descending,
+material ID tie-break). This is client pagination: the API still returns the complete
+authorized list. Server pagination is deferred until library scale justifies it.
+Mobile tables omit the upload-date column, retain academic placement/actions and fit
+the page; complete metadata remains on material detail.
+
+Upload uses the existing protected multipart endpoint for PDF, PNG, JPG and JPEG.
+The displayed state is Processing material, not invented ingestion phases or byte
+percentages. The API file cap is 10 MiB and configured lifecycle limits may be lower.
+Frontend extension/size checks are convenience only. Local PDF/OCR extraction and
+managed UUID/hash ingestion remain authoritative. Exact-content duplicates do not
+create a second material. Failure feedback does not imply successful registration.
+New uploads remain PRIVATE; this build adds no sharing administration.
+
+Placement controls offer scoped existing values and allow new text. Whitespace is
+trimmed and known values are canonicalized case-insensitively in parent-first order.
+Backend validation remains authoritative; this is not a curriculum normalization
+migration. Direct callers can still supply case variants supported by older APIs.
+
+Material detail presents filename, hierarchy, upload date, type, safe visibility
+and management availability. Updates/deletions wait for confirmed backend results.
+Deletion uses a native modal dialog with safe initial focus, Escape and explicit
+confirmation naming the material. Partial failure remains a warning requiring local
+storage review; no broad cleanup or automatic destructive retry is introduced.
+
+### Minimal API contract changes
+
+GET `/api/v1/materials/{identity}` adds `visibility` and `can_manage`, derived by the
+existing scoped application service after READ authorization. It exposes no ownership
+IDs, chunk IDs, hashes or paths. Backend policy remains authoritative for mutations.
+PATCH of that resource returns `status` and `success`: incomplete lifecycle updates
+no longer falsely return an unconditional updated status. Existing successful callers
+continue to receive `status: updated`. Other material endpoints and RAG defaults are
+unchanged. No storage migration is required.
+
+### Knowledge handoff and verification
+
+Course, subject, unit and material actions pass only structured scope metadata/IDs
+in URLs. Knowledge shows Current scope and Clear scope, resets on URL handoff, and
+loads options from authorized material metadata. Scope controls are disabled while
+metadata loads. Backend permission/relevance gates remain unchanged. No evidence
+provides scope/question guidance and a real upload link; no ungrounded fallback occurs.
+
+Run frontend tests/lint/typecheck/build and the complete isolated Python suite.
+Frontend synthetic tests cover course projections, pagination/filter reset, multipart
+CSRF, duplicates, failures, edit, confirmation/partial deletion, scope and accessibility.
+HTTP tests cover safe detail metadata, private isolation, course membership, read-only
+management denial, truthful lifecycle outcomes and browsing without vector/AI loading.
+A Chrome smoke used a real synthetic PDF, isolated SQLite/uploads and in-memory vector
+fixtures with mocked inference: login → upload → course/material → unit-scoped answer
+→ edit Unit → updated library filter → confirm deletion → empty course/library → logout.
+It checked mobile page overflow and native dialog focus/Escape. Production storage and
+the locally excluded nested clone remain untouched. Temporary test servers are stopped.
+
+Assessment Studio frontend remains the next build; Streamlit reference workflows
+and unrelated frontend Upcoming destinations are preserved.

@@ -7,7 +7,7 @@ import { useAuth } from "@/features/auth";
 import { Loading, ErrorNotice } from "@/components/states";
 import { APIError } from "@/lib/api";
 const navigation = [
-  { title: "Home", href: "/home", icon: House }, { title: "Courses & materials", href: "/library", icon: Library }, { title: "Knowledge", href: "/knowledge", icon: BookOpen },
+  { title: "Home", href: "/home", icon: House }, { title: "Courses", href: "/courses", icon: Library }, { title: "Material library", href: "/library", icon: Library }, { title: "Knowledge", href: "/knowledge", icon: BookOpen },
   { title: "Assessment Studio", href: "/workspace/assessment", icon: ClipboardList, upcoming: true }, { title: "Document Studio", href: "/workspace/documents", icon: FileText, upcoming: true },
   { title: "Student Analytics", href: "/workspace/students", icon: ChartNoAxesCombined, upcoming: true }, { title: "Smart Assistant", href: "/workspace/assistant", icon: Workflow, upcoming: true }, { title: "Activity", href: "/workspace/activity", icon: ListChecks, upcoming: true },
 ];

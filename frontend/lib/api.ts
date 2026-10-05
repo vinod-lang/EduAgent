@@ -1,6 +1,7 @@
-import type { Professor, Dashboard, Material, AIStatus, Answer, KnowledgeRequest } from "@/types/api";
+import type { Professor, Dashboard, Material, AIStatus, Answer, KnowledgeRequest, Hierarchy, UploadResult, DeleteResult, MaterialDetail } from "@/types/api";
 const messages: Record<number, string> = {
   401: "Your session has ended. Sign in again to continue.", 403: "This request is not permitted. Refresh your session and try again.",
+  413: "This file exceeds the API upload limit. Choose a smaller file.",
   404: "This resource is unavailable or you do not have access to it.", 409: "This change conflicts with the current saved state. Review it before retrying.",
   422: "Check your question, selection or required fields and try again.", 503: "The local service is unavailable. Check the backend and try again.",
   500: "EduAgent could not complete this request. Try again later.",
@@ -45,6 +46,18 @@ export class APIClient {
       this.csrf = null; await this.ensureCSRF(); return run();
     }
   }
+  private async mutate<T>(path: string, method: string, body?: object | FormData): Promise<T> {
+    await this.ensureCSRF();
+    const run = () => this.raw<T>(path, {method, headers: {"X-CSRF-Token": this.csrf ?? "", ...(body instanceof FormData || !body ? {} : {"Content-Type":"application/json"})}, body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined});
+    try { return await run(); } catch (error) {
+      if (!(error instanceof APIError) || error.code !== "CSRF_REJECTED") throw error;
+      this.csrf=null; await this.ensureCSRF(); return run();
+    }
+  }
+  material(id: string, signal?: AbortSignal) { return this.request<MaterialDetail>(`/materials/${encodeURIComponent(id)}`,undefined,signal); }
+  upload(file: File, hierarchy: Hierarchy) { const form=new FormData();form.append("file",file);for(const [k,v] of Object.entries(hierarchy))form.append(k,v);return this.mutate<UploadResult>("/materials","POST",form); }
+  editMaterial(id: string, hierarchy: Hierarchy) { return this.mutate<{success:boolean;status:string}>(`/materials/${encodeURIComponent(id)}`,"PATCH",hierarchy); }
+  deleteMaterial(id: string) { return this.mutate<DeleteResult>(`/materials/${encodeURIComponent(id)}`,"DELETE"); }
   async login(identity: string) { const data = await this.raw<{ csrf_token: string }>("/auth/dev-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identity }) }); this.csrf = data.csrf_token; }
   async logout() { await this.request("/auth/logout", {}); this.clear(); }
   me(signal?: AbortSignal) { return this.request<Professor>("/auth/me", undefined, signal); }

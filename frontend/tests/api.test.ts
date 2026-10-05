@@ -12,3 +12,16 @@ describe("safe typed API boundary",()=>{
   it("supports cancellation",async()=>{const signal=new AbortController().signal;const transport=vi.fn().mockRejectedValue(new DOMException("Cancelled","AbortError"));await expect(new APIClient(transport).me(signal)).rejects.toMatchObject({name:"AbortError"});expect(transport.mock.calls[0][1].signal).toBe(signal);});
   it("maps network failures safely",async()=>{await expect(new APIClient(vi.fn().mockRejectedValue(new Error("private upstream URL"))).me()).rejects.toMatchObject({status:0,code:"NETWORK_ERROR"});});
 });
+
+it('retries multipart only after CSRF rejection without setting a JSON content type',async()=>{
+ let writes=0;const transport=vi.fn(async(path:RequestInfo|URL,init?:RequestInit)=>{
+  if(String(path).endsWith('/auth/csrf'))return new Response(JSON.stringify({csrf_token:`token-${writes}`}));
+  expect(init?.method).toBe('POST');writes++;return new Response(JSON.stringify(writes===1?{error:{code:'CSRF_REJECTED'}}:{success:true,duplicate:false,material:null}),{status:writes===1?403:200});
+ });const client=new APIClient(transport);await client.upload(new File(['synthetic'],'synthetic.pdf'),{course:'C',semester:'S',subject:'X',unit:'U'});
+ expect(writes).toBe(2);const calls=transport.mock.calls.filter(([,init])=>init?.method==='POST');expect(calls[0][1]?.body).toBe(calls[1][1]?.body);expect(calls[1][1]?.headers).not.toHaveProperty('Content-Type');
+});
+
+it('does not retry a partial deletion automatically',async()=>{
+ const transport=vi.fn(async(path:RequestInfo|URL)=>String(path).endsWith('/auth/csrf')?new Response(JSON.stringify({csrf_token:'synthetic'})):new Response(JSON.stringify({success:false,sqlite_deleted:false,vectors_deleted:2,file_deleted:false})));
+ expect((await new APIClient(transport).deleteMaterial('synthetic')).success).toBe(false);expect(transport).toHaveBeenCalledTimes(2);
+});

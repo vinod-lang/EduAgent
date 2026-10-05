@@ -50,6 +50,7 @@ class Profile(Transport):professor_id:str;display_name:str;institution_id:str;de
 class Handle(Transport):handle:str
 class StatusResponse(Transport):status:str
 class MaterialResponse(Hierarchy):material_id:str;filename:str;created_at:str
+class MaterialDetailResponse(MaterialResponse):visibility:Literal['PRIVATE','COURSE','DEPARTMENT','INSTITUTE'];can_manage:bool
 class Source(Transport):source:str;material_id:str|None=None
 class Answer(Transport):answer:str;grounded:bool;sources:list[Source]
 
@@ -61,6 +62,7 @@ class AIStatus(Transport):
     provider:str;preferred_model:str;effective_model:str|None;fallback_active:bool|None
     embedding:str;candidate_k:int;final_k:int;threshold:float;reranker:bool;router:bool
 class UploadResponse(Transport):success:bool;duplicate:bool;material:MaterialResponse|None;message:str
+class MaterialUpdateResponse(Transport):status:str;success:bool
 class DeletionResponse(Transport):success:bool;sqlite_deleted:bool|None;vectors_deleted:int|None;file_deleted:bool|None
 class RetrievalResponse(Transport):status:str;sources:list[Source];evidence_count:int
 class DocumentResponse(DocumentEdit):handle:str;document_id:str|None;document_type:str;version_count:int

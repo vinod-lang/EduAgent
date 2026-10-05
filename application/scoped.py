@@ -22,6 +22,11 @@ class ScopedMaterials(Protected):
     def get(self,identity,*,context=None):
         self.policy.resource(context,Action.READ,'material',identity)
         return self.base.get(identity)
+    def describe(self,identity,*,context=None):
+        ownership=self.policy.resource(context,Action.READ,'material',identity)
+        record=self.base.get(identity)
+        return dict(record,visibility=ownership.visibility_scope.value,
+                    can_manage=self.policy.allows(context,Action.UPDATE,ownership) and self.policy.allows(context,Action.DELETE,ownership))
     def courses(self,*,context=None):return sorted({m['course'] for m in self.list_materials(context=context)})
     def hierarchy(self,*,context=None):
         from dashboard import build_material_tree

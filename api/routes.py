@@ -66,17 +66,19 @@ def materials(request:Request,p=Depends(principal),api=Depends(services)):
 @router.get('/materials/hierarchy',tags=['Materials'],summary='Browse authorized academic hierarchy')
 def hierarchy(request:Request,p=Depends(principal),api=Depends(services)):
     return invoke(request,api.materials.hierarchy,context=p.context)
-@router.get('/materials/{identity}',tags=['Materials'],response_model=S.MaterialResponse,summary='Get one authorized material')
+@router.get('/materials/{identity}',tags=['Materials'],response_model=S.MaterialDetailResponse,summary='Get one authorized material')
 def get_material(identity:str,request:Request,p=Depends(principal),api=Depends(services)):
-    return P.material(invoke(request,api.materials.get,identity,context=p.context))
+    record=invoke(request,api.materials.describe,identity,context=p.context)
+    return dict(P.material(record),visibility=record['visibility'],can_manage=record['can_manage'])
 @router.post('/materials',tags=['Materials'],summary='Upload a private professor material',response_model=S.UploadResponse)
 def upload(request:Request,file:UploadFile=File(...),course:str=Form(...),semester:str=Form(...),subject:str=Form(...),unit:str=Form(...),p=Depends(principal),api=Depends(services)):
     h=S.Hierarchy(course=course,semester=semester,subject=subject,unit=unit)
     result=invoke(request,api.materials.upload,MaterialUpload(upload_bytes(file),file.filename or '',h.model_dump()),context=p.context)
     return {'success':result.get('success',False),'duplicate':result.get('duplicate',False),'material':P.material(result['material']) if result.get('success') else None,'message':'Material registered.' if result.get('success') else 'Material was not registered. Review the upload or duplicate selection.'}
-@router.patch('/materials/{identity}',tags=['Materials'],response_model=S.StatusResponse,summary='Update authorized material hierarchy')
+@router.patch('/materials/{identity}',tags=['Materials'],response_model=S.MaterialUpdateResponse,summary='Update authorized material hierarchy')
 def update_material(identity:str,body:S.Hierarchy,request:Request,p=Depends(principal),api=Depends(services)):
-    invoke(request,api.materials.edit_hierarchy,identity,body.model_dump(),context=p.context);return {'status':'updated'}
+    result=invoke(request,api.materials.edit_hierarchy,identity,body.model_dump(),context=p.context)
+    return {'status':'updated' if result.get('success') else 'incomplete','success':bool(result.get('success'))}
 @router.delete('/materials/{identity}',tags=['Materials'],summary='Delete authorized material across storage',response_model=S.DeletionResponse)
 def delete_material(identity:str,request:Request,p=Depends(principal),api=Depends(services)):
     result=invoke(request,api.materials.delete,identity,context=p.context)
