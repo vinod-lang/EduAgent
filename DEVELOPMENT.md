@@ -421,3 +421,102 @@ their existing behavior and are not redesigned here.
 
 Production SQLite, upload and Chroma files are not migrated or reindexed. All new
 checks use isolated storage and mocked model boundaries, with no live inference.
+
+## Build 18 — application use-case boundary
+
+Before Build 18 the UI mixed rendering/session orchestration with calls into
+agents, lifecycle functions and repositories; Assessment Studio also queried
+legacy SQLite scope directly. Most actual product validation, calculations,
+structured generation and persistence already lived outside Streamlit.
+This build preserves those tested implementations and puts application services
+between active widgets and their operations.
+
+```text
+Streamlit rendering / widgets / navigation / session state
+                         ↓
+application.create_application_services()
+                         ↓
+Material / Knowledge / Assessment / Document / Student / Assistant
+                   Activity / Dashboard services
+                         ↓
+Existing domain validators, lifecycle, repositories, retrieval
+                         ↓
+Central AI provider / lazy vector storage / SQLite / managed files
+```
+
+Architecture inventory and separation:
+
+| Active workflow | UI responsibility | Application boundary | Existing domain/storage/AI responsibility |
+|---|---|---|---|
+| Professor Dashboard | Cards, tabs, navigation, delete confirmation | Dashboard workspace queries; Material and Activity services | Existing deterministic summary/tree and registry/lifecycle; no generation |
+| Smart Assistant | Request collection, session invalidation, preview, explicit execute/retry | Assistant plan/preview/validate/execute | Existing planner/provider and allowlisted executor; privacy/confirmation/dependency rules unchanged |
+| Upload Content | Bytes and hierarchy collection, progress and outcomes | Material upload/edit/delete/get/list/hierarchy | Existing UUID/hash/Unit lifecycle, extraction, vector/SQLite/file rollback |
+| Ask Knowledge Base | Scope widgets, answer/source/diagnostic presentation | Knowledge ask/retrieve | Existing hierarchy-aware retrieval, no-evidence gate and centralized provider |
+| Assessment Studio | Specification controls, session fingerprint, preview/download buttons | Assessment generation/PYQ extraction/exports; Material scope queries | Existing plan/schema/product validation, normalization, evidence and exports |
+| Document Studio | Editor fields, explicit fact/preference decisions, session versions | Document generation/refinement/edit/save/load/history/restore/facts/feedback/exports | Existing facts, version snapshots, preference-aware generation and document repository |
+| Student Data Hub | Upload/mapping confirmation, session cleanup, display/search controls | Student parse/table/suggest/normalize/analyze/filter/export | Existing local ingestion and deterministic analytics; no student AI or persistence |
+| Activity Log | Action/timestamp display | Activity recent | Existing allowlisted labels and timestamp sanitization; raw details excluded |
+
+`application/` contains eight use-case services across focused modules, plus
+contracts, errors and a composition root. It has no Streamlit, direct Ollama or
+Chroma-client dependency. Imports and construction do not open databases, load
+embeddings or initialize vector clients. `initialize_local_storage()` is an
+explicit compatibility startup operation used by the current Streamlit entry
+point, never an import/factory side effect. Runtime tests use isolated paths.
+
+Transport-neutral dataclasses add `KnowledgeRequest`, `MaterialUpload`,
+`AssistantPreview`, and `StudentAnalysis`; strong domain types (AssessmentSpec,
+DocumentRequest/Versions, ActionPlan, QAResult, GenerationDiagnostic) are reused.
+Exports return bytes, not file handles. StudentAnalysis keeps the existing local
+DataFrame but offers an explicit JSON-safe records/summary conversion with missing
+nonfinite values represented as null. Other domain dataclasses can be serialized
+by a future transport adapter; no HTTP serializer or endpoint is introduced.
+Material results retain their established dictionary/count/partial-failure contract.
+No UI components, DB cursors or Chroma clients are returned.
+
+Expected domain failures map to stable application errors: validation, not found,
+conflict, insufficient evidence, unsupported operation, provider unavailable and
+storage error. Public code/message and existing safe generation diagnostics contain
+no raw responses, paths, SQL or private values. Only allowlisted constant student
+file-format and material extraction/OCR errors retain their detailed wording. Exception causes remain available
+to developers; future HTTP handlers must serialize only the public contract, not
+exceptions/tracebacks. Material partial-failure counts and success flags are retained;
+raw legacy rollback/client errors are replaced with safe review guidance. Unexpected
+developer errors are not swallowed. Existing validators remain authoritative.
+
+Factory arguments accept configured service instances. Service constructors accept
+simple module/callable dependencies for domain agents, retrieval, repositories,
+exports, planner/executor and ingestion, plus managed upload/vector boundaries.
+Defaults resolve at use rather than import, preserving lazy resources and existing
+mock seams. Dashboard workspace queries return current summary, materials, courses
+and saved-draft metadata without generation or invented pending workflow state.
+AI-stack status remains the existing explicit inventory-only backend operation;
+it is not automatically called while rendering the Dashboard.
+
+REMAINING_UI_COUPLING (intentional incremental boundary):
+
+- UI still constructs validated domain request/specification/mapping dataclasses and
+  uses pure hierarchy/template/diff helpers, domain constants and safe diagnostics.
+- Session fingerprints, selection invalidation, explicit plan confirmation/retry and
+  document editor/version presentation remain in Streamlit. Document refinement UI
+  uses two service calls rather than the combined `DocumentService.refine()` use case;
+  the combined method is available to a future API caller.
+- Student sheet selection/validation-report presentation and widget cleanup use the
+  existing local domain objects/session cleanup helper. No student payload is sent
+  to AI; application contracts do not accept Streamlit session state.
+- Legacy unused agent callbacks/imports remain in the workspace presentation
+  signature for compatibility. Active generation paths use application services.
+- Current SQLite domain modules still resolve `db.DB_PATH` globally. Repository/agent
+  injection is supported at boundaries, but concurrent professor-scoped transactions,
+  serialization and resource lifetimes need a subsequent backend design. Do not
+  treat this build as a multi-tenant or thread-safe deployment architecture.
+
+A future FastAPI composition root can call the same factory with configured services
+and serialize the existing domain/application results. No FastAPI, authentication,
+HTTP endpoints, new persistence schema, model routing or frontend rewrite is added.
+`ProfessorContext` is an optional unset caller-identity contract only: it grants no
+permissions, filters no rows and fabricates no professor identity. Authorization
+must be implemented and tested separately before multi-professor deployment.
+Build 17 profile and retrieval defaults are unchanged; no benchmark or live AI
+calls are needed in this build. Production runtime storage and the locally excluded
+nested accidental clone must remain byte-for-byte unchanged.

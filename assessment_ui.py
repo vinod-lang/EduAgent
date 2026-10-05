@@ -1,27 +1,24 @@
 """Assessment Studio controls; backend owns validation, grounding and arithmetic."""
 import hashlib
 import streamlit as st
-import db
 from generation_ui import render_diagnostic
 from generation_diagnostics import from_error,validated
 from dashboard import natural_key
 from assessment_spec import AssessmentScope,AssessmentSpec,AssessmentError,TYPES,DIFFICULTIES,BLOOMS
-from assessment_studio import generate_assessment
-from assessment_pyq import extract_pyq
-from assessment_export import assessment_pdf_bytes,assessment_docx_bytes,AssessmentExportError
+from assessment_export import AssessmentExportError
+from application import create_application_services
+from application.errors import ApplicationError
+services = create_application_services()
+generate_assessment = services.assessments.generate
+extract_pyq = services.assessments.extract_pyq
+assessment_pdf_bytes = services.assessments.pdf
+assessment_docx_bytes = services.assessments.docx
 from ai_provider import AIProviderError
 from retrieval import RetrievalError
 
 
 def scope_records():
-    # Actual known metadata only. Legacy rows lacking semester/subject cannot be
-    # assigned to a deeper scope and remain searchable in the existing Q&A page.
-    rows=list(db.list_materials())
-    with db.material_connection() as conn:
-        columns={r['name'] for r in conn.execute('PRAGMA table_info(documents)')}
-        if {'course','semester','subject','unit'}<=columns:
-            rows.extend(dict(r) for r in conn.execute('SELECT * FROM documents'))
-    return rows
+    return services.materials.scope_records()
 
 
 def _choice(label,rows,scope,field):
@@ -68,7 +65,7 @@ def render_assessment_studio():
         spec=AssessmentSpec(mode,AssessmentScope(scope.get('course'),scope.get('semester'),scope.get('subject'),tuple(units),tuple(identities)),types,difficulty,blooms,total,marks,title,institution,instructions,topic)
         st.subheader('Deterministic question plan')
         st.dataframe([s.to_dict() for s in spec.plan],hide_index=True)
-    except AssessmentError as exc:
+    except (ApplicationError,AssessmentError) as exc:
         st.warning(str(exc))
     pyq=st.file_uploader('Optional PYQ style guidance',type=['pdf','png','jpg','jpeg'],key='assessment_pyq')
     st.caption('PYQs guide style only; they are temporarily extracted locally and never registered as teaching materials. Verbatim reuse is rejected where detectable.')
@@ -84,10 +81,10 @@ def render_assessment_studio():
                     result=generate_assessment(spec,pyq_text=guidance)
                 st.session_state['assessment_result']=(result,fingerprint)
                 try:
-                    db.log_activity('assessment_generated','')
+                    services.activity.record('assessment_generated')
                 except Exception:
                     st.warning('Assessment validated, but the activity event could not be recorded.')
-            except (AssessmentError,AIProviderError,RetrievalError) as exc:
+            except (ApplicationError,AssessmentError,AIProviderError,RetrievalError) as exc:
                 render_diagnostic(from_error(exc))
     stored=st.session_state.get('assessment_result')
     if not stored:return
@@ -125,4 +122,4 @@ def render_assessment_result(result, key_prefix="assessment_studio"):
         st.download_button('Professor answer key PDF',key,'assessment_answer_key.pdf','application/pdf',key=key_prefix+'_key_pdf')
         st.download_button('Student paper DOCX',assessment_docx_bytes(result),'assessment.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',key=key_prefix+'_paper_docx')
         st.download_button('Professor answer key DOCX',assessment_docx_bytes(result,answer_key=True),'assessment_answer_key.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',key=key_prefix+'_key_docx')
-    except AssessmentExportError as exc:st.error(str(exc))
+    except (ApplicationError,AssessmentExportError) as exc:st.error(str(exc))

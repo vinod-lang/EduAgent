@@ -4,8 +4,13 @@ from generation_ui import render_diagnostic
 from generation_diagnostics import from_error,validated,clarification,failed
 from structured_generation import Failure
 from assistant_models import PlanError
-from assistant_planner import plan_request
-from assistant_services import ExecutionContext,validate_plan,execute_plan
+from assistant_services import ExecutionContext
+from application import create_application_services
+from application.errors import ApplicationError
+services = create_application_services()
+plan_request = services.assistant.plan
+validate_plan = services.assistant.validate
+execute_plan = services.assistant.execute
 from analytics_agent import Thresholds
 from ai_provider import AIProviderError
 
@@ -40,7 +45,8 @@ def render_results(report,plan,navigate_to):
                     navigate_to('Document Studio')
                 st.button('Open in Document Studio',key='assistant_open_'+result.action_id,on_click=open_document)
             elif result.result_type=='ANALYZE_STUDENTS':
-                from student_hub import public_results,result_csv_bytes
+                public_results = services.students.public
+                result_csv_bytes = services.students.csv
                 frame,summary=result.payload
                 st.caption('Local filtered students; class summary covers the full eligible dataset. No AI receives these results.')
                 st.write(summary);st.dataframe(public_results(frame),hide_index=True)
@@ -68,7 +74,7 @@ def render_assistant(navigate_to):
                 with st.spinner('Planning only — no services execute yet...'):
                     plan=plan_request(request+('\n'+details if details.strip() else ''),context)
                 st.session_state['assistant_plan']=plan
-            except (PlanError,AIProviderError) as exc:render_diagnostic(from_error(exc))
+            except (ApplicationError,PlanError,AIProviderError) as exc:render_diagnostic(from_error(exc))
     plan=st.session_state.get('assistant_plan')
     if plan is None:return
     if plan.unsupported:
@@ -79,7 +85,7 @@ def render_assistant(navigate_to):
         st.write(action.parameters)
         if action.depends_on:st.caption('Depends on: '+', '.join(action.depends_on)+' (assessment title/type/count only)')
     try:missing=validate_plan(plan,context)
-    except PlanError as exc:
+    except (ApplicationError,PlanError) as exc:
         render_diagnostic(from_error(exc));return
     if missing:render_diagnostic(clarification())
     else:render_diagnostic(validated(plan.provenance))
@@ -92,7 +98,7 @@ def render_assistant(navigate_to):
         if not missing and not stale and report is None:
             try:
                 with st.spinner('Executing validated services...'):st.session_state['assistant_report']=execute_plan(plan,context)
-            except PlanError:st.error('Execution rejected. Review the plan and available data.')
+            except (ApplicationError,PlanError):st.error('Execution rejected. Review the plan and available data.')
     report=st.session_state.get('assistant_report')
     if report is not None:
         render_results(report,plan,navigate_to)
@@ -102,4 +108,4 @@ def render_assistant(navigate_to):
                     with st.spinner('Retrying failed/blocked steps; completed steps are preserved...'):
                         st.session_state['assistant_report']=execute_plan(plan,context,previous=report,retry=True)
                     st.rerun()
-                except PlanError:st.error('Retry rejected; create a new plan.')
+                except (ApplicationError,PlanError):st.error('Retry rejected; create a new plan.')

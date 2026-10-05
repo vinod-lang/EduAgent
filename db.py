@@ -189,3 +189,12 @@ def remove_material_record(material_id):
 
 def legacy_materials(course):
     return [dict(row, semester='Unassigned', subject='Unassigned', unit=row.get('unit') or 'Unassigned', managed=False) for row in get_documents_for_course(course)]
+
+
+def assessment_legacy_scope_records():
+    """Read only recorded legacy hierarchy; do not invent semester/subject values."""
+    with material_connection() as conn:
+        columns={row['name'] for row in conn.execute('PRAGMA table_info(documents)')}
+        if not {'course','semester','subject','unit'}<=columns:
+            return []
+        return [dict(row) for row in conn.execute('SELECT * FROM documents')]

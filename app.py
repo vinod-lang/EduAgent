@@ -1,20 +1,30 @@
 from retrieval import RetrievalError
-from rag_ui import available_courses, scope_options
-from dashboard import get_dashboard_summary, get_activity_view, PAGES
+from rag_ui import scope_options
+from dashboard import PAGES
 from workspace_ui import render_dashboard, render_activity
 from assessment_ui import render_assessment_studio
 from config import get_max_upload_bytes, ConfigurationError
 import streamlit as st
 import os
 from content_agent import extract_text_from_pdf
-from material_service import upload_material, delete_material, edit_hierarchy, MaterialError
-from student_support_agent import answer_question
+from material_service import MaterialError
 from assessment_agent import generate_questions
 from document_agent import generate_document
 from coordinator import classify_intent
 from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes, generate_question_paper_pdf_bytes
 from document_agent import generate_batch_attendance_warnings
-from db import list_materials, legacy_materials, init_db, add_course_if_new, get_all_courses, add_document_record, get_documents_for_course, log_activity, get_recent_activity
+from application import create_application_services
+from application.errors import ApplicationError
+services = create_application_services()
+list_materials = services.materials.list_materials
+get_all_courses = services.materials.courses
+available_courses = services.materials.available_courses
+upload_material = services.materials.upload_material
+delete_material = services.materials.delete
+edit_hierarchy = services.materials.edit_hierarchy
+answer_question = services.knowledge.answer_question
+get_dashboard_summary = services.dashboard.summary
+get_activity_view = services.activity.recent
 from assessment_agent import generate_questions, generate_personalized_practice
 from assessment_agent import generate_questions, generate_personalized_practice, generate_question_paper
 
@@ -24,12 +34,12 @@ from ai_provider import AIProviderError
 def call_ai(function, *args, **kwargs):
     try:
         return function(*args, **kwargs)
-    except (AIProviderError, RetrievalError) as exc:
+    except (ApplicationError, AIProviderError, RetrievalError) as exc:
         st.error(str(exc))
         st.stop()
 
 
-init_db()  # creates tables if they don't exist yet — safe to call every run
+services.initialize_local_storage()  # explicit startup, not application import/construction
 
 
 # Page setup
@@ -98,7 +108,7 @@ if page == "Upload Content":
                     st.warning(outcome["error"])
                 for warning in outcome.get("warnings", []):
                     st.warning(warning)
-            except MaterialError as exc:
+            except (ApplicationError, MaterialError) as exc:
                 st.error(str(exc))
 
 

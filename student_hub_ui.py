@@ -3,10 +3,22 @@ import hashlib
 import streamlit as st
 from analytics_agent import Thresholds, DEFAULT_THRESHOLDS
 from student_ingestion import (MAX_BYTES, MAX_ROWS, MAX_COLUMNS, MAX_SHEETS, StudentDataError,
-    parse_student_file, header_candidates, make_raw_table, suggest_columns, suggested_maximum,
-    Mapping, Assessment, normalize_dataset)
-from student_hub import (analyze_dataset, filter_students, public_results, result_csv_bytes,
-                         validation_csv_bytes, clear_student_data)
+    suggested_maximum,
+    Mapping, Assessment)
+from student_hub import clear_student_data
+from application import create_application_services
+from application.errors import ApplicationError
+service = create_application_services().students
+parse_student_file = service.parse
+header_candidates = service.headers
+make_raw_table = service.table
+suggest_columns = service.suggest
+normalize_dataset = service.normalize
+analyze_dataset = service.analyze_dataset
+filter_students = service.filter
+public_results = service.public
+result_csv_bytes = service.csv
+validation_csv_bytes = service.validation_csv
 
 
 def _reset_derived(keep=()):
@@ -34,7 +46,7 @@ def render_student_hub():
                 book = parse_student_file(data,filename)
                 st.session_state['student_book'] = book
                 st.session_state['student_fingerprint'] = fingerprint
-        except StudentDataError as exc:
+        except (ApplicationError,StudentDataError) as exc:
             _reset_derived()
             st.error(str(exc)); return
     book = st.session_state.get('student_book')
@@ -59,7 +71,7 @@ def render_student_hub():
                 value=candidates[0] if candidates else 1,step=1,key=f'student_header_{options.index(selected)}'))
     try:
         table = make_raw_table(sheet,header)
-    except StudentDataError as exc:
+    except (ApplicationError,StudentDataError) as exc:
         st.error(str(exc)); return
     table_key = (st.session_state['student_fingerprint'],selected,header)
     if st.session_state.get('student_table_key') != table_key:
@@ -114,7 +126,7 @@ def render_student_hub():
             st.session_state['student_validation'] = normalize_dataset(table,mapping)
             st.session_state['student_validation_key'] = signature
             st.session_state.pop('student_results',None)
-        except StudentDataError as exc:
+        except (ApplicationError,StudentDataError) as exc:
             st.error(str(exc))
     dataset = st.session_state.get('student_validation')
     if dataset is None:

@@ -1,6 +1,9 @@
 """Professor workspace presentation. Mutations and intelligence remain in services."""
 import streamlit as st
-from dashboard import QUICK_ACTIONS, material_type, build_material_tree, legacy_content_view
+from dashboard import QUICK_ACTIONS, material_type, build_material_tree
+from application import create_application_services
+from application.errors import ApplicationError
+legacy_content_view = create_application_services().dashboard.legacy
 from material_service import MaterialError
 
 
@@ -27,7 +30,7 @@ def render_material_controls(material, *, edit_hierarchy, delete_material):
                 st.error(outcome['error'])
                 for warning in outcome.get('warnings', []):
                     st.warning(warning)
-            except MaterialError as exc:
+            except (ApplicationError,MaterialError) as exc:
                 st.error(str(exc))
     confirm = st.checkbox("Confirm permanent deletion", key=f"confirm_{identity}")
     if st.button("Delete material", key=f"delete_{identity}", disabled=not confirm):

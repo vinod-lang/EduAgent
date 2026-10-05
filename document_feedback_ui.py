@@ -3,7 +3,15 @@ import streamlit as st
 from document_models import DocumentError,CATALOG,TONES
 from document_templates import get_template
 from document_diff import document_diff,comparison_key,CATEGORIES,REUSABLE_CATEGORIES
-from document_preferences import approve_preference,list_preferences,update_preference,delete_preference,save_feedback,SCOPES
+from document_preferences import SCOPES
+from application import create_application_services
+from application.errors import ApplicationError
+service = create_application_services().documents
+approve_preference = service.approve_preference
+list_preferences = service.list_preferences
+update_preference = service.update_preference
+delete_preference = service.delete_preference
+save_feedback = service.feedback
 
 LABELS={'generated':'AI Generated','professor_edit':'Professor Edit','ai_refinement':'AI Refinement','restored':'Restored','legacy_current':'Legacy Current — action unknown'}
 
@@ -19,7 +27,7 @@ def render_history(versions,document_id):
         st.caption('Created: '+versions.timestamps[index])
         for _,text in get_template(versions.template_id).blocks(historical):st.text(text)
         if st.button('Restore selected version'):
-            return versions.restore(index)
+            return service.restore(versions,index)
         before_index=st.selectbox('Compare from version',list(range(len(versions.history))),format_func=lambda i:f'Version {i+1}',index=max(0,len(versions.history)-2),key='feedback_compare_from')
         after_index=st.selectbox('Compare to version',list(range(len(versions.history))),format_func=lambda i:f'Version {i+1}',index=len(versions.history)-1,key='feedback_compare_to')
         key=comparison_key(document_id,versions.version_ids[before_index],versions.version_ids[after_index])
@@ -45,7 +53,7 @@ def render_history(versions,document_id):
                     if not document_id:raise DocumentError('Save the document history before approving an edit-derived preference.')
                     approve_preference(instruction,category,scope,document_type=versions.current.document_type if scope!='general' else None,template_id=versions.template_id if scope=='template' else None,source_document_id=document_id,source_before_id=versions.version_ids[before_index],source_after_id=versions.version_ids[after_index])
                     decisions[candidate_key]='approved';st.rerun()
-                except DocumentError as exc:st.error(str(exc))
+                except (ApplicationError,DocumentError) as exc:st.error(str(exc))
     return None
 
 
@@ -62,7 +70,7 @@ def render_preferences(document_type,template_id):
                 try:
                     approve_preference(instruction,category,scope,document_type=selected_type if scope!='general' else None,template_id=template_id if scope=='template' else None,tone=None if tone=='Any' else tone)
                     st.success('Preference explicitly approved.')
-                except DocumentError as exc:st.error(str(exc))
+                except (ApplicationError,DocumentError) as exc:st.error(str(exc))
         try:
             preferences=list_preferences()
             if not preferences:st.info('No approved preferences yet.')
@@ -77,7 +85,7 @@ def render_preferences(document_type,template_id):
                 confirm=st.checkbox('Confirm preference deletion',key='confirm_preference_'+identity)
                 if st.button('Delete preference',key='delete_preference_'+identity,disabled=not confirm):
                     delete_preference(identity);st.rerun()
-        except DocumentError as exc:st.error(str(exc))
+        except (ApplicationError,DocumentError) as exc:st.error(str(exc))
 
 
 def render_feedback(versions,document_id):
@@ -90,4 +98,4 @@ def render_feedback(versions,document_id):
                     if not document_id:raise DocumentError('Save the current version before recording feedback.')
                     save_feedback(document_id,versions.version_ids[-1],rating,note)
                     st.success('Feedback saved locally. It is not automatically reusable guidance.')
-                except DocumentError as exc:st.error(str(exc))
+                except (ApplicationError,DocumentError) as exc:st.error(str(exc))

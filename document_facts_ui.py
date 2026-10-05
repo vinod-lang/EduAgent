@@ -1,6 +1,14 @@
 """Explicit professor-only fact management; no inference during rendering."""
 import streamlit as st
-from document_facts import FIELDS,fact,conflicts,confirm_edit,update_fact,remove_fact
+from document_facts import FIELDS
+from application import create_application_services
+from application.errors import ApplicationError
+service = create_application_services().documents
+fact = service.fact
+conflicts = service.conflicts
+confirm_edit = service.confirm_edit
+update_fact = service.update_fact
+remove_fact = service.remove_fact
 from document_models import DocumentError
 
 
@@ -15,9 +23,9 @@ def render_fact_conflict(versions):
     if st.button('Update confirmed facts and apply edit'):
         try:
             expectations=confirm_edit(candidate,versions.expectation_snapshots[-1],replacements)
-            st.session_state['studio_pending_versions']=versions.update(candidate,expectations=expectations)
+            st.session_state['studio_pending_versions']=service.edit(versions,candidate,expectations=expectations)
             st.session_state.pop('studio_fact_conflict',None);st.rerun()
-        except DocumentError:st.error('Enter replacement facts that match your edit, or remove the constraint explicitly in fact management.')
+        except (ApplicationError,DocumentError):st.error('Enter replacement facts that match your edit, or remove the constraint explicitly in fact management.')
     if st.button('Keep original confirmed facts and revise edit'):
         st.session_state.pop('studio_fact_conflict',None)
         st.info('Confirmed facts retained. Revise the proposed edit before applying it.')
@@ -34,14 +42,14 @@ def render_confirmed_facts(versions):
             if st.button('Update confirmed fact '+str(index+1)):
                 try:
                     updated=update_fact(expectations,f.fact_id,value)
-                    st.session_state['studio_pending_versions']=versions.update(versions.current,expectations=updated);st.rerun()
-                except DocumentError:st.error('The proposed fact does not match the current document. Apply an edit and resolve its conflict, or use a matching value.')
+                    st.session_state['studio_pending_versions']=service.edit(versions,versions.current,expectations=updated);st.rerun()
+                except (ApplicationError,DocumentError):st.error('The proposed fact does not match the current document. Apply an edit and resolve its conflict, or use a matching value.')
             if st.button('Remove confirmed fact '+str(index+1)):
-                st.session_state['studio_pending_versions']=versions.update(versions.current,expectations=remove_fact(expectations,f.fact_id));st.rerun()
+                st.session_state['studio_pending_versions']=service.edit(versions,versions.current,expectations=remove_fact(expectations,f.fact_id));st.rerun()
         field=st.selectbox('Fact field',FIELDS,key='new_fact_field')
         value=st.text_input('New confirmed fact value',key='new_fact_value')
         if st.button('Add confirmed fact',disabled=not value.strip()):
             try:
                 updated=expectations+(fact(field,value),)
-                st.session_state['studio_pending_versions']=versions.update(versions.current,expectations=updated);st.rerun()
-            except DocumentError:st.error('The fact must match the current document and not duplicate a required structured field.')
+                st.session_state['studio_pending_versions']=service.edit(versions,versions.current,expectations=updated);st.rerun()
+            except (ApplicationError,DocumentError):st.error('The fact must match the current document and not duplicate a required structured field.')
