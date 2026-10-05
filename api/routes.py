@@ -104,6 +104,19 @@ def assessment(body:S.AssessmentRequest,request:Request,p=Depends(principal),api
         with request.app.state.workspaces.item(p,handle,'pyq') as text:pass
     a=invoke(request,api.assessments.generate,spec,context=p.context,pyq_text=text)
     key=request.app.state.workspaces.put(p,'assessment',a);return P.assessment(a,key)
+@router.get('/assessments/{handle}',tags=['Assessments'],response_model=S.AssessmentResponse,summary='Review a session-owned validated assessment')
+def assessment_review(handle:str,request:Request,p=Depends(principal),api=Depends(services)):
+    with request.app.state.workspaces.item(p,handle,'assessment') as a:
+        return P.assessment(invoke(request,api.assessments.review,a,context=p.context),handle)
+@router.patch('/assessments/{handle}',tags=['Assessments'],response_model=S.AssessmentResponse,summary='Revalidate explicit professor edits; preserve previous result on failure')
+def assessment_edit(handle:str,body:S.AssessmentEdit,request:Request,p=Depends(principal),api=Depends(services)):
+    with request.app.state.workspaces.item(p,handle,'assessment') as a:
+        updated=invoke(request,api.assessments.edit,a,[q.model_dump() for q in body.questions],body.revision,context=p.context)
+        request.app.state.workspaces.update(p,handle,'assessment',updated)
+        return P.assessment(updated,handle)
+@router.delete('/assessments/{handle}',tags=['Assessments'],response_model=S.StatusResponse,summary='Discard only this session assessment workspace')
+def assessment_discard(handle:str,request:Request,p=Depends(principal)):
+    request.app.state.workspaces.remove(p,handle,'assessment');return {'status':'discarded'}
 @router.get('/assessments/{handle}/export',tags=['Assessments'],summary='Export authorized session assessment')
 def assessment_export(handle:str,request:Request,format:str='pdf',answer_key:bool=False,p=Depends(principal),api=Depends(services)):
     with request.app.state.workspaces.item(p,handle,'assessment') as a:return binary(invoke(request,api.assessments.export,a,format,context=p.context,answer_key=answer_key),format)

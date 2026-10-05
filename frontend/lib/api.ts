@@ -1,4 +1,4 @@
-import type { Professor, Dashboard, Material, AIStatus, Answer, KnowledgeRequest, Hierarchy, UploadResult, DeleteResult, MaterialDetail } from "@/types/api";
+import type { Professor, Dashboard, Material, AIStatus, Answer, KnowledgeRequest, Hierarchy, UploadResult, DeleteResult, MaterialDetail, Assessment, AssessmentRequest, QuestionEdit } from "@/types/api";
 const messages: Record<number, string> = {
   401: "Your session has ended. Sign in again to continue.", 403: "This request is not permitted. Refresh your session and try again.",
   413: "This file exceeds the API upload limit. Choose a smaller file.",
@@ -7,7 +7,7 @@ const messages: Record<number, string> = {
   500: "EduAgent could not complete this request. Try again later.",
 };
 export class APIError extends Error {
-  constructor(public status: number, public code: string = "REQUEST_FAILED", public requestId?: string) { super(messages[status] ?? "Cannot connect to EduAgent. Check the backend connection and try again."); this.name = "APIError"; }
+  constructor(public status: number, public code: string = "REQUEST_FAILED", public requestId?: string, public category?: string) { super(messages[status] ?? "Cannot connect to EduAgent. Check the backend connection and try again."); this.name = "APIError"; }
 }
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 export async function parseError(response: Response): Promise<APIError> {
@@ -15,7 +15,8 @@ export async function parseError(response: Response): Promise<APIError> {
   const detail = record(value) && record(value.error) ? value.error : {};
   const code = typeof detail.code === "string" && /^[A-Z_]{1,40}$/.test(detail.code) ? detail.code : "REQUEST_FAILED";
   const id = typeof detail.request_id === "string" && /^[0-9a-f-]{36}$/.test(detail.request_id) ? detail.request_id : undefined;
-  return new APIError(response.status, code, id);
+  const category=record(detail.diagnostic)&&typeof detail.diagnostic.category==="string"?detail.diagnostic.category:undefined;
+  return new APIError(response.status, code, id, category);
 }
 export class APIClient {
   private csrf: string | null = null;
@@ -58,6 +59,15 @@ export class APIClient {
   upload(file: File, hierarchy: Hierarchy) { const form=new FormData();form.append("file",file);for(const [k,v] of Object.entries(hierarchy))form.append(k,v);return this.mutate<UploadResult>("/materials","POST",form); }
   editMaterial(id: string, hierarchy: Hierarchy) { return this.mutate<{success:boolean;status:string}>(`/materials/${encodeURIComponent(id)}`,"PATCH",hierarchy); }
   deleteMaterial(id: string) { return this.mutate<DeleteResult>(`/materials/${encodeURIComponent(id)}`,"DELETE"); }
+  generateAssessment(body: AssessmentRequest,signal?:AbortSignal){return this.request<Assessment>("/assessments/generate",body,signal);}
+  assessment(handle:string,signal?:AbortSignal){return this.request<Assessment>(`/assessments/${encodeURIComponent(handle)}`,undefined,signal);}
+  editAssessment(handle:string,revision:number,questions:QuestionEdit[]){return this.mutate<Assessment>(`/assessments/${encodeURIComponent(handle)}`,"PATCH",{revision,questions});}
+  discardAssessment(handle:string){return this.mutate<{status:string}>(`/assessments/${encodeURIComponent(handle)}`,"DELETE");}
+  uploadPYQ(file:File){const form=new FormData();form.append("file",file);return this.mutate<{handle:string}>("/assessments/pyq","POST",form);}
+  async exportAssessment(handle:string,format:'pdf'|'docx',answerKey:boolean){
+    let response:Response;try{response=await this.transport(`/api/v1/assessments/${encodeURIComponent(handle)}/export?format=${format}&answer_key=${answerKey}`,{credentials:"include",cache:"no-store"});}catch{throw new APIError(0,"NETWORK_ERROR");}
+    if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
+  }
   async login(identity: string) { const data = await this.raw<{ csrf_token: string }>("/auth/dev-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identity }) }); this.csrf = data.csrf_token; }
   async logout() { await this.request("/auth/logout", {}); this.clear(); }
   me(signal?: AbortSignal) { return this.request<Professor>("/auth/me", undefined, signal); }

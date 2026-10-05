@@ -12,6 +12,9 @@ class AssessmentService:
         self.studio=studio; self.pyq=pyq; self.exporter=exporter
     def generate(self, spec: AssessmentSpec, **options) -> AssessmentResult:
         return call(dependency(self.studio,'assessment_studio').generate_assessment,spec,**options)
+    def edit(self,result,edits,*,pyq_text=""):
+        from assessment_editing import edit_assessment
+        return call(edit_assessment,result,edits,pyq_text=pyq_text)
     def extract_pyq(self, data, filename):
         return call(dependency(self.pyq,'assessment_pyq').extract_pyq,data,filename)
     def export(self, result, format='pdf', *, answer_key=False):

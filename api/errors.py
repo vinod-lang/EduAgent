@@ -11,7 +11,18 @@ def error(request,code,message,status):
     return JSONResponse(status_code=status,content={'error':{'code':code,'message':message,'request_id':getattr(request.state,'request_id','unavailable')}})
 def install(app):
     @app.exception_handler(ApplicationError)
-    async def controlled(request,exc):return error(request,exc.code,exc.message,STATUS.get(exc.code,400))
+    async def controlled(request,exc):
+        response=error(request,exc.code,exc.message,STATUS.get(exc.code,400))
+        if request.url.path.startswith('/api/v1/assessments') and exc.generation_diagnostic is not None:
+            from generation_diagnostics import failed
+            from structured_generation import Failure
+            try:diagnostic=failed(exc.generation_diagnostic.category,exc.generation_diagnostic.attempts_used)
+            except (ValueError,AttributeError):diagnostic=failed(Failure.PRODUCT_VALIDATION_FAILED)
+            import json
+            payload=json.loads(response.body)
+            payload['error']['diagnostic']={k:getattr(diagnostic,k) for k in ('category','title','professor_message','suggested_action')}
+            return JSONResponse(status_code=response.status_code,content=payload)
+        return response
     @app.exception_handler(PydanticValidationError)
     @app.exception_handler(RequestValidationError)
     async def validation(request,exc):return error(request,'INVALID_REQUEST','Check the required request fields and formats.',422)

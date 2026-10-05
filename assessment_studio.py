@@ -1,5 +1,5 @@
 """One grounded, strictly validated assessment pipeline; no persistence or retries."""
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from collections import Counter
 import json
 import re
@@ -78,7 +78,12 @@ def _strict_object(pairs):
     return result
 
 
-def validate_output(raw,spec,evidence,*,pyq_text=''):
+def validate_output(raw,spec,evidence,*,pyq_text='',professor_marks=None):
+    plan=spec.plan
+    if professor_marks is not None:
+        if not isinstance(professor_marks,tuple) or len(professor_marks)!=spec.total_questions or any(type(m) is not int or not 1<=m<=10000 for m in professor_marks) or sum(professor_marks)!=spec.total_marks:
+            raise AssessmentError('Edited marks must be positive integers and match the target total.')
+        plan=tuple(replace(slot,marks=marks) for slot,marks in zip(plan,professor_marks))
     if not isinstance(raw,str) or len(raw)>1000000:raise AssessmentError('Model response is missing or too large.')
     try:
         parsed=json.loads(raw,object_pairs_hook=_strict_object,parse_constant=lambda _: (_ for _ in ()).throw(AssessmentError('Nonfinite JSON number.')))
@@ -89,7 +94,7 @@ def validate_output(raw,spec,evidence,*,pyq_text=''):
     fields={'question_number','question_type','question_text','options','correct_answer','model_answer','difficulty','bloom_level','marks','evidence_ids'}
     registry={f'E{i+1}':c for i,c in enumerate(evidence)}
     validated=[];seen_text=set()
-    for slot,q in zip(spec.plan,parsed['questions']):
+    for slot,q in zip(plan,parsed['questions']):
         if not isinstance(q,dict) or set(q)!=fields:raise AssessmentError(f'Q{slot.question_number}: missing/unknown structured fields.')
         for field in ('question_number','marks'):
             if type(q[field]) is not int or q[field]!=getattr(slot,field):raise AssessmentError(f'Q{slot.question_number}: {field} does not match the deterministic plan.')

@@ -71,7 +71,14 @@ class FactResponse(Transport):fact_id:str;field:str;value:str;source:str
 class QuestionResponse(Transport):
     question_number:int;question_type:str;question_text:str;options:dict[str,str]
     correct_answer:str;model_answer:str;difficulty:str;bloom_level:str;marks:int
-class AssessmentResponse(Transport):handle:str;title:str;assessment_type:str;total_marks:int;questions:list[QuestionResponse]
+class AssessmentResponse(Transport):handle:str;title:str;assessment_type:str;total_marks:int;questions:list[QuestionResponse];revision:int;professor_edited:bool;validation:dict[str,bool]
+class AssessmentQuestionEdit(Transport):
+    question_text:str=Field(min_length=1,max_length=6000)
+    marks:int=Field(ge=1,le=10000)
+    options:dict[str,str]
+    correct_answer:str=Field(max_length=1)
+    model_answer:str=Field(min_length=1,max_length=6000)
+class AssessmentEdit(Transport):revision:int=Field(ge=0);questions:list[AssessmentQuestionEdit]=Field(min_length=1,max_length=100)
 class PreferenceResponse(Transport):preference_id:str;instruction:str;category:str;scope:str;active:bool
 class DraftMetadata(Transport):document_id:str;template_id:str;created_at:str;updated_at:str;status:str
 class BookResponse(Handle):sheets:list[str]

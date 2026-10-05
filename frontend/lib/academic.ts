@@ -9,3 +9,5 @@ export function projectCourses(materials:Material[]){return [...new Set(material
 export function normalizeHierarchy(hierarchy:Hierarchy,materials:Material[]):Hierarchy { const normalized={...hierarchy};for(const key of levels)normalized[key]=canonical(normalized[key],options(materials,normalized,key));return normalized; }
 
 export function decodeRouteSegment(value:string){try{return decodeURIComponent(value);}catch{return value;}}
+
+export function assessmentURL(scope:Scope){return scopeURL(scope).replace('/knowledge?','/assessment?');}

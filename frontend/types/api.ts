@@ -14,3 +14,8 @@ export interface UploadResult { success: boolean; duplicate: boolean; material: 
 export interface DeleteResult { success: boolean; sqlite_deleted: boolean|null; vectors_deleted: number|null; file_deleted: boolean|null }
 
 export interface MaterialDetail extends Material { visibility: "PRIVATE"|"COURSE"|"DEPARTMENT"|"INSTITUTE"; can_manage: boolean }
+
+export interface AssessmentQuestion {question_number:number;question_type:'MCQ'|'Descriptive';question_text:string;options:Record<string,string>;correct_answer:string;model_answer:string;difficulty:string;bloom_level:string;marks:number}
+export interface Assessment {handle:string;title:string;assessment_type:'Quiz'|'Question Paper';total_marks:number;questions:AssessmentQuestion[];revision:number;professor_edited:boolean;validation:Record<string,boolean>}
+export interface AssessmentRequest {assessment_type:'Quiz'|'Question Paper';course:string;semester:string;subject:string;units:string[];material_ids:string[];question_types:Record<string,number>;difficulties:Record<string,number>;blooms:Record<string,number>;total_questions:number;total_marks:number;title:string;institution:string;instructions:string;topic:string;pyq_handle:string|null}
+export type QuestionEdit=Pick<AssessmentQuestion,'question_text'|'marks'|'options'|'correct_answer'|'model_answer'>;

@@ -888,3 +888,36 @@ the locally excluded nested clone remain untouched. Temporary test servers are s
 
 Assessment Studio frontend remains the next build; Streamlit reference workflows
 and unrelated frontend Upcoming destinations are preserved.
+
+## Build 23 — Web Assessment Studio
+
+The authenticated `/assessment` workspace uses the existing Assessment Studio,
+RAG evidence gate, structured generation and product validators. Course, unit and
+material links carry scope into the authoring form; unknown or unauthorized
+material IDs are never silently substituted. Quiz and question-paper modes share
+explicit type, difficulty, Bloom and marks configuration. Optional PYQ uploads
+remain session-private style guidance, not library/evidence content.
+
+Generated assessments live in bounded server-owned session workspaces, not a
+persistent assessment repository. Navigation, logout, expiry or restart can lose
+the workspace; downloaded files must be saved separately. Browser Stop waiting
+aborts waiting, not server inference. No automatic generation retry is added.
+
+GET/PATCH/DELETE `/assessments/{handle}` provide authorized review, deterministic
+edit validation and explicit discard. PATCH requires the current revision and
+only editable question text, marks, MCQ options/answer and reference answer.
+Scope, evidence references, question type and distributions remain server-owned.
+Professor marks may be redistributed only while preserving the configured total.
+Existing product validation remains authoritative, including duplicate questions,
+MCQ structure and PYQ-copy checks. Rejected edits retain the previous valid server
+version. Dirty local edits block UI exports until revalidated; PDF/DOCX exports
+use the validated server version and the chosen paper/answer-key view.
+
+Safe generation diagnostics report actionable validation/service failures without
+exposing rejected content, prompts, chunks or internal exception messages.
+Validation of structure and retained evidence references is not verification of
+academic correctness; professors must review edited content and its support.
+Question removal, single-question AI replacement and manual additions are deferred
+because fixed distributions and provenance require dedicated validated contracts.
+No AI calls, production storage migrations or model/RAG default changes are needed
+for the isolated tests and mocked browser smoke test.

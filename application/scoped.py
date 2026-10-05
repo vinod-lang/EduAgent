@@ -1,5 +1,5 @@
 """Protected application entry points. Every operation needs an explicit caller context."""
-from dataclasses import dataclass,replace
+from dataclasses import dataclass,replace,field
 from .errors import call,NotFoundError,ValidationError,StorageError,UnsupportedOperationError
 from ._dependencies import dependency
 from .models import KnowledgeRequest,StudentAnalysis
@@ -82,7 +82,18 @@ class ScopedAssessments(Protected):
         self.actor(context)
         for identity in spec.scope.material_ids:self.policy.resource(context,Action.GENERATE,'material',identity)
         result=self.base.generate(spec,pyq_text=pyq_text,retry=retry,collection=self.knowledge.collection(context))
-        return AssessmentWorkspace(result,self.private(context,kind='document'))
+        return AssessmentWorkspace(result,self.private(context,kind='document'),pyq_text=pyq_text)
+    def review(self,workspace,*,context=None):
+        if not isinstance(workspace,AssessmentWorkspace):raise AccessDeniedError()
+        self.policy.require(context,Action.READ,workspace.ownership,kind='document')
+        return workspace
+    def edit(self,workspace,edits,revision,*,context=None):
+        self.review(workspace,context=context)
+        self.policy.require(context,Action.UPDATE,workspace.ownership,kind='document')
+        from .errors import ConflictError
+        if revision!=workspace.revision:raise ConflictError()
+        result=self.base.edit(workspace.result,edits,pyq_text=workspace.pyq_text)
+        return replace(workspace,result=result,revision=workspace.revision+1)
     def extract_pyq(self,data,filename,*,context=None):self.actor(context);return self.base.extract_pyq(data,filename)
     def export(self,workspace,format='pdf',*,context=None,answer_key=False):
         if not isinstance(workspace,AssessmentWorkspace):raise AccessDeniedError()
@@ -93,6 +104,8 @@ class ScopedAssessments(Protected):
 class AssessmentWorkspace:
     result: object
     ownership: Ownership
+    revision: int = 0
+    pyq_text: str = field(default="",repr=False)
 
 class ScopedDocuments(Protected):
     def __init__(self,base,policy):super().__init__(policy);self.base=base
