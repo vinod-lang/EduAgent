@@ -43,6 +43,9 @@ class StudentMapping(Transport):
     student_id:str|None=None;student_name:str|None=None;attendance:str
     assessments:list[AssessmentColumn]=Field(min_length=1)
     attendance_scale:str='auto';assessment_number:str|None=None
+class StudentNormalized(Transport):handle:str;validation:dict;issues:list[dict]
+class StudentDetail(Transport):index:int=Field(ge=0);marks_threshold:float=Field(default=50,ge=0);attendance_threshold:float=Field(default=70,ge=0,le=100)
+class StudentPreview(Transport):sheet:str;header_row:int=Field(default=1,ge=1,le=10020)
 class Analyze(Transport):view:str='All';search:str=Field(default='',max_length=200);marks_threshold:float=Field(default=50,ge=0);attendance_threshold:float=Field(default=70,ge=0,le=100)
 class PlanRequest(Transport):request:str=Field(min_length=1,max_length=4000);student_handle:str|None=None
 class Execute(Transport):confirmed:bool;retry:bool=False

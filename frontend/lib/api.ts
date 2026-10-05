@@ -91,6 +91,17 @@ export class APIClient {
     let response:Response;try{response=await this.transport(`/api/v1/document-workspaces/${encodeURIComponent(handle)}/export?format=${format}`,{credentials:"include",cache:"no-store"});}catch{throw new APIError(0,"NETWORK_ERROR");}
     if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
   }
+  uploadStudents(file:File){const form=new FormData();form.append("file",file);return this.mutate<{handle:string;sheets:string[]}>("/students/upload","POST",form);}
+  previewStudents(handle:string,sheet:string,header_row:number){return this.request<import("@/types/students").Preview>(`/students/${encodeURIComponent(handle)}/preview`,{sheet,header_row});}
+  normalizeStudents(handle:string,mapping:import("@/types/students").Mapping){return this.request<import("@/types/students").Normalized>(`/students/${encodeURIComponent(handle)}/normalize`,mapping);}
+  analyzeStudents(handle:string,filters:import("@/types/students").Filters){return this.request<import("@/types/students").Analysis>(`/students/${encodeURIComponent(handle)}/analyze`,filters);}
+  studentDetail(handle:string,index:number,filters:import("@/types/students").Filters){return this.request<import("@/types/students").Detail>(`/students/${encodeURIComponent(handle)}/detail`,{index,marks_threshold:filters.marks_threshold,attendance_threshold:filters.attendance_threshold});}
+  clearStudents(handle:string){return this.mutate<{status:string}>(`/students/${encodeURIComponent(handle)}`,"DELETE");}
+  async exportStudents(handle:string,filters:import("@/types/students").Filters){
+    await this.ensureCSRF();const run=()=>this.transport(`/api/v1/students/${encodeURIComponent(handle)}/export`,{method:"POST",credentials:"include",cache:"no-store",headers:{"Content-Type":"application/json","X-CSRF-Token":this.csrf??""},body:JSON.stringify(filters)});
+    let response:Response;try{response=await run();if(response.status===403){const error=await parseError(response.clone());if(error.code==="CSRF_REJECTED"){this.csrf=null;await this.ensureCSRF();response=await run();}}}catch{throw new APIError(0,"NETWORK_ERROR");}
+    if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
+  }
   async login(identity: string) { const data = await this.raw<{ csrf_token: string }>("/auth/dev-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identity }) }); this.csrf = data.csrf_token; }
   async logout() { await this.request("/auth/logout", {}); this.clear(); }
   me(signal?: AbortSignal) { return this.request<Professor>("/auth/me", undefined, signal); }

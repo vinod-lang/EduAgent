@@ -975,3 +975,17 @@ Exports use validated current content without facts/provenance metadata sections
 Facts, prose, feedback and preferences never enter Activity Log details, URLs,
 Chroma or client persistent storage. Tests and browser smoke use synthetic private
 records, mocked inference and isolated runtime only. Streamlit remains intact.
+
+## Build 25 — Student Analytics web workspace
+
+`/students` activates the existing local Student Data Hub through protected Build 20 APIs. CSV and XLSX files (10 MB maximum, existing row/cell/sheet limits) are parsed in memory; macros and formula evaluation remain unsupported. Files, rows and mappings are never persisted or logged. No student values are sent to the planner or AI provider. A regression spy covers upload, preview/mapping, normalization, analytics, filtering, detail and export with zero provider calls.
+
+Review the worksheet and header row, then confirm deterministic mapping suggestions. Map an identifier/name, attendance, and assessment columns with percentage or explicit raw maximum scales. Optional assessment-number mapping enables the existing trend domain, with one marks column. Preview shows at most 10 rows and 200 characters per cell. The backend is authoritative for normalization, calculations, configurable support thresholds, missingness and trend labels.
+
+Invalid rows are excluded according to the existing ingestion rules, with full summary counts and up to 50 row/code/severity issues visible. Missing data is never converted to zero. Class averages use available data and expose availability counts. Snapshot data has no fabricated trend; detail displays the real normalized snapshot or ordered assessment history. Performance/attendance meters supplement textual values and tables; no chart dependency is introduced.
+
+Search, filters and thresholds apply explicitly through the backend. CSV exports use the last applied view/thresholds (not pending edits); sorting changes display order only. The table renders 50 rows per page; exports include all matching rows across pages. Existing spreadsheet formula escaping is preserved. Student identifiers are not used in detail URLs.
+
+Book/dataset handles remain unguessable, session/professor bound and ephemeral. Refreshing loses the browser link; no local/session storage is used. Clear requires confirmation and invalidates student-dependent assistant plans. Replacement requires clearing confirmation before choosing a new file. Logout invalidates all session workspaces. Student records remain inside this dedicated workspace; Home exposes only its navigation action. Smart Assistant stays Upcoming.
+
+All HTTP tests and browser checks use synthetic isolated storage. Production SQLite, uploads and Chroma must stay byte-for-byte unchanged; no Chroma client initialization or AI inference is required. Streamlit remains the unchanged reference workflow.

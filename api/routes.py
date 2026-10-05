@@ -205,7 +205,20 @@ def delete_preference(identity:str,request:Request,p=Depends(principal),api=Depe
 def students_upload(request:Request,file:UploadFile=File(...),p=Depends(principal),api=Depends(services)):
     book=invoke(request,api.students.parse,upload_bytes(file),file.filename or '',context=p.context)
     return {'handle':request.app.state.workspaces.put(p,'student-book',book),'sheets':[s.name for s in book.sheets]}
-@router.post('/students/{handle}/normalize',tags=['Students'],response_model=S.Handle,summary='Normalize local student data with explicit mapping')
+@router.post('/students/{handle}/preview',tags=['Students'],summary='Bounded local preview and deterministic mapping suggestions')
+def student_preview(handle:str,body:S.StudentPreview,request:Request,p=Depends(principal),api=Depends(services)):
+    from application.models import StudentAnalysis
+    with request.app.state.workspaces.item(p,handle,'student-book') as book:
+        sheet=next((s for s in book.sheets if s.name==body.sheet),None)
+        if sheet is None:raise ValidationError()
+        table=invoke(request,api.students.table,sheet,body.header_row,context=p.context)
+        suggestions=invoke(request,api.students.suggest,table,context=p.context)
+        # Values are for explicit mapping only, never diagnostics, activity or AI.
+        rows=StudentAnalysis(table.frame.head(10),{}).to_dict()['students']
+        rows=[{k:str(v)[:200] if v is not None else None for k,v in row.items()} for row in rows]
+        return {'columns':list(table.frame.columns),'rows':rows,'total_rows':len(table.frame),
+                'suggestions':{k:{'candidates':list(v.candidates),'confidence':v.confidence} for k,v in suggestions.items()}}
+@router.post('/students/{handle}/normalize',tags=['Students'],response_model=S.StudentNormalized,summary='Normalize local student data with explicit mapping')
 def student_normalize(handle:str,body:S.StudentMapping,request:Request,p=Depends(principal),api=Depends(services)):
     from student_ingestion import Mapping,Assessment
     with request.app.state.workspaces.item(p,handle,'student-book') as book:
@@ -216,20 +229,39 @@ def student_normalize(handle:str,body:S.StudentMapping,request:Request,p=Depends
         a=invoke(request,api.students.normalize,table,mapping,context=p.context)
         key=request.app.state.workspaces.put(p,'student-data',a)
         request.app.state.workspaces.remove(p,handle,'student-book')
-        return {'handle':key}
+        return {'handle':key,'validation':a.dataset.summary,'issues':[{'row':i.row,'code':i.code,'severity':i.severity} for i in a.dataset.issues[:50]]}
 @router.post('/students/{handle}/analyze',tags=['Students'],summary='Deterministic local student analytics; no persistence or AI',response_model=S.StudentResponse)
 def student_analyze(handle:str,body:S.Analyze,request:Request,p=Depends(principal),api=Depends(services)):
     from analytics_agent import Thresholds
     with request.app.state.workspaces.item(p,handle,'student-data') as a:
         result=invoke(request,api.students.analyze,a,Thresholds(body.marks_threshold,body.attendance_threshold),context=p.context,view=body.view,search=body.search)
-        return result.to_dict()
+        data=result.to_dict()
+        data['summary']['validation']=a.dataset.summary
+        return data
+@router.post('/students/{handle}/detail',tags=['Students'],summary='Deterministic detail by transient row position, not URL student identity')
+def student_detail(handle:str,body:S.StudentDetail,request:Request,p=Depends(principal),api=Depends(services)):
+    from analytics_agent import Thresholds
+    from application.models import StudentAnalysis
+    with request.app.state.workspaces.item(p,handle,'student-data') as a:
+        result=invoke(request,api.students.analyze,a,Thresholds(body.marks_threshold,body.attendance_threshold),context=p.context)
+        if body.index>=len(result.displayed):raise NotFoundError()
+        record=result.displayed.iloc[body.index]
+        if a.dataset.mode=='snapshot':history=a.dataset.frame.iloc[[body.index]]
+        else:
+            column='student_id' if 'student_id' in a.dataset.frame else 'student_name'
+            history=a.dataset.frame.loc[a.dataset.frame[column].astype(str)==str(record.analysis_id)].sort_values('assessment_number')
+        return {'student':StudentAnalysis(result.displayed.iloc[[body.index]],{}).to_dict()['students'][0],
+                'history':StudentAnalysis(history,{}).to_dict()['students'],'mode':a.dataset.mode}
 @router.post('/students/{handle}/export',tags=['Students'],summary='Export exactly the selected local student view')
 def student_export(handle:str,body:S.Analyze,request:Request,p=Depends(principal),api=Depends(services)):
     from analytics_agent import Thresholds
     with request.app.state.workspaces.item(p,handle,'student-data') as a:return binary(invoke(request,api.students.export,a,context=p.context,thresholds=Thresholds(body.marks_threshold,body.attendance_threshold),view=body.view,search=body.search),'csv')
 @router.delete('/students/{handle}',tags=['Students'],response_model=S.StatusResponse,summary='Discard an ephemeral student workspace')
 def student_clear(handle:str,request:Request,p=Depends(principal)):
-    request.app.state.workspaces.clear_student(p,handle)
+    try:
+        request.app.state.workspaces.remove(p,handle,'student-book')
+    except NotFoundError:
+        request.app.state.workspaces.clear_student(p,handle)
     return {'status':'cleared'}
 @router.post('/assistant/plan',tags=['Assistant'],summary='Plan through the centralized provider and deterministic privacy gates',response_model=S.PlanResponse)
 def assistant_plan(body:S.PlanRequest,request:Request,p=Depends(principal),api=Depends(services)):
