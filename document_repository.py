@@ -93,6 +93,7 @@ def save_draft(versions,document_id=None,status='Draft',*,ownership=None):
     now=datetime.now(timezone.utc).isoformat()
     try:
         with db.material_connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
             init_document_schema(conn)
             if document_id is None:
                 document_id=str(uuid.uuid4())

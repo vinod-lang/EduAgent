@@ -3,12 +3,25 @@ from contextlib import contextmanager
 from datetime import datetime
 
 DB_PATH = "eduagent.db"
+from contextvars import ContextVar
+_storage_path = ContextVar('eduagent_sqlite_path',default=None)
+
+@contextmanager
+def storage_context(path):
+    token=_storage_path.set(str(path))
+    try:yield
+    finally:_storage_path.reset(token)
+
+def open_connection(path):
+    conn=sqlite3.connect(str(path),timeout=5)
+    conn.row_factory=sqlite3.Row
+    conn.execute('PRAGMA foreign_keys=ON')
+    conn.execute('PRAGMA busy_timeout=5000')
+    return conn
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # lets us access columns by name
-    return conn
+    return open_connection(_storage_path.get() or DB_PATH)
 
 
 def init_db():
@@ -174,6 +187,7 @@ def list_materials(course=None, *, authorized_ids=None):
 def register_material(record, *, ownership=None):
     keys = ('material_id', 'original_filename', 'managed_filename', 'file_hash', 'course', 'semester', 'subject', 'unit', 'chunk_ids', 'created_at')
     with material_connection() as conn:
+        conn.execute('BEGIN IMMEDIATE')
         conn.execute('INSERT INTO materials (' + ','.join(keys) + ') VALUES (' + ','.join('?' for _ in keys) + ')', tuple(record[k] for k in keys))
         conn.execute('INSERT OR IGNORE INTO courses (course_name, created_at) VALUES (?, ?)', (record['course'], record['created_at']))
         conn.execute('INSERT INTO activity_log (action, details, timestamp) VALUES (?, ?, ?)', ('material_uploaded', record['material_id'], record['created_at']))

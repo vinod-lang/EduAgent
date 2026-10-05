@@ -121,6 +121,9 @@ class ScopedDocuments(Protected):
         self._workspace(workspace,context,Action.UPDATE if workspace.document_id else Action.CREATE)
         identity=self.base.save(workspace.versions,workspace.document_id,status,ownership=workspace.ownership if workspace.document_id is None else None)
         return replace(workspace,document_id=identity)
+    def facts(self,workspace,*,context=None):
+        self._workspace(workspace,context,Action.READ)
+        return workspace.versions.expectation_snapshots[-1]
     def manage_fact(self,workspace,operation,*,context=None,**values):
         self._workspace(workspace,context,Action.UPDATE)
         return replace(workspace,versions=self.base.manage_fact(workspace.versions,operation,**values))

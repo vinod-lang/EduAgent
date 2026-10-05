@@ -29,12 +29,12 @@ CREATE TABLE IF NOT EXISTS security_activity (
 '''
 
 class SecurityRepository:
-    def __init__(self,connection_factory=None): self.connection_factory=connection_factory
+    def __init__(self,connection_factory=None,*,database_path=None): self.connection_factory=connection_factory;self.database_path=database_path
     @contextmanager
     def connection(self):
         if self.connection_factory is None:
             import db
-            conn=db.get_connection()
+            conn=db.open_connection(self.database_path) if self.database_path is not None else db.get_connection()
         else: conn=self.connection_factory()
         conn.row_factory=sqlite3.Row
         try:
@@ -55,18 +55,21 @@ class SecurityRepository:
         if row is None:return None
         try:return ProfessorIdentity(row['professor_id'],row['display_name'],row['institution_id'],row['department_id'],Status(row['status']),tuple(Role(r) for r in json.loads(row['roles_json'])))
         except (ValueError,TypeError):return None
-    def _write_professor(self,identity, *, create=False):
+    def _write_professor(self,identity, *, create=False,actor=None):
         if not isinstance(identity,ProfessorIdentity):raise ValueError('Invalid professor metadata.')
         with self.connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
             if create:conn.execute('INSERT INTO professors VALUES (?,?,?,?,?,?)',(identity.professor_id,identity.display_name,identity.institution_id,identity.department_id,identity.status.value,json.dumps([r.value for r in identity.roles])))
             else:
                 old=conn.execute('SELECT institution_id,department_id FROM professors WHERE professor_id=?',(identity.professor_id,)).fetchone()
                 if old is None or (old['institution_id'],old['department_id'])!=(identity.institution_id,identity.department_id):raise ValueError('Institution/department reassignment requires a separate migration.')
                 conn.execute('UPDATE professors SET display_name=?,status=?,roles_json=? WHERE professor_id=?',(identity.display_name,identity.status.value,json.dumps([r.value for r in identity.roles]),identity.professor_id))
+            if actor is not None:self._audit(conn,actor.professor_id,'professor_metadata_updated')
     def bootstrap_professor(self,identity):
         """Trusted offline provisioning only, not an application/UI permission bypass."""
         self._write_professor(identity,create=True)
-    def update_professor(self,identity):self._write_professor(identity)
+    def create_professor(self,identity,*,actor):self._write_professor(identity,create=True,actor=actor)
+    def update_professor(self,identity,*,actor=None):self._write_professor(identity,actor=actor)
     def list_professors(self,institution_id):
         with self.connection() as conn:
             ids=[r[0] for r in conn.execute('SELECT professor_id FROM professors WHERE institution_id=? ORDER BY professor_id',(institution_id,))]
@@ -79,12 +82,15 @@ class SecurityRepository:
             if not self.has(conn,'security_courses'):return None
             row=conn.execute('SELECT * FROM security_courses WHERE course_id=?',(identity,)).fetchone()
         return dict(row) if row else None
-    def set_membership(self,professor_id,course_id,*,member=True):
-        professor=self.get_professor(professor_id);course=self.course(course_id)
-        if professor is None or course is None or (professor.institution_id,professor.department_id)!=(course['institution_id'],course['department_id']):raise ValueError('Invalid course membership.')
+    def set_membership(self,professor_id,course_id,*,member=True,actor=None):
         with self.connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            professor=conn.execute('SELECT institution_id,department_id FROM professors WHERE professor_id=?',(professor_id,)).fetchone()
+            course=conn.execute('SELECT institution_id,department_id FROM security_courses WHERE course_id=?',(course_id,)).fetchone()
+            if professor is None or course is None or tuple(professor)!=tuple(course):raise ValueError('Invalid course membership.')
             if member:conn.execute('INSERT OR IGNORE INTO professor_course_memberships VALUES (?,?)',(professor_id,course_id))
             else:conn.execute('DELETE FROM professor_course_memberships WHERE professor_id=? AND course_id=?',(professor_id,course_id))
+            if actor is not None:self._audit(conn,actor.professor_id,'course_membership_updated')
     def is_member(self,professor_id,course_id):
         with self.connection() as conn:
             return self.has(conn,'professor_course_memberships') and bool(conn.execute('SELECT 1 FROM professor_course_memberships WHERE professor_id=? AND course_id=?',(professor_id,course_id)).fetchone())
@@ -101,6 +107,7 @@ class SecurityRepository:
         if kind not in KINDS or not isinstance(ownership,Ownership):raise ValueError('Invalid ownership metadata.')
         opaque(identity)
         conn.execute('INSERT INTO resource_ownership VALUES (?,?,?,?,?,?,?)',(kind,identity,ownership.owner_professor_id,ownership.institution_id,ownership.department_id,ownership.course_id,ownership.visibility_scope.value))
+        SecurityRepository._audit(conn,ownership.owner_professor_id,{'material':'material_uploaded','document':'document_saved','preference':'preference_approved'}[kind],kind,identity)
 
     def put_ownership(self,kind,identity,ownership):
         if kind not in KINDS or not isinstance(ownership,Ownership):raise ValueError('Invalid ownership metadata.')
@@ -110,9 +117,11 @@ class SecurityRepository:
     def change_ownership(self,kind,identity,old,new):
         if kind not in KINDS or not isinstance(old,Ownership) or not isinstance(new,Ownership):raise ValueError('Invalid ownership transition.')
         with self.connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
             changed=conn.execute("""UPDATE resource_ownership SET institution_id=?,department_id=?,course_id=?,visibility_scope=? WHERE resource_type=? AND resource_id=? AND owner_professor_id=? AND institution_id=? AND department_id IS ? AND course_id IS ? AND visibility_scope=?""",
                 (new.institution_id,new.department_id,new.course_id,new.visibility_scope.value,kind,identity,old.owner_professor_id,old.institution_id,old.department_id,old.course_id,old.visibility_scope.value)).rowcount
             if changed!=1:raise ValueError('Ownership changed; reload before sharing.')
+            self._audit(conn,new.owner_professor_id,'material_scope_updated',kind,identity)
     def remove_ownership(self,kind,identity):
         with self.connection() as conn:conn.execute('DELETE FROM resource_ownership WHERE resource_type=? AND resource_id=?',(kind,identity))
     def candidates(self,kind,actor):
@@ -125,11 +134,14 @@ class SecurityRepository:
                   (visibility_scope='DEPARTMENT' AND department_id=?) OR visibility_scope='INSTITUTE')''',
                  (kind,actor.institution_id,actor.professor_id,actor.professor_id,actor.department_id)).fetchall()
         return tuple(r[0] for r in rows)
+    @staticmethod
+    def _audit(conn,actor_id,action,kind=None,identity=None):
+        conn.execute('INSERT INTO security_activity(actor_professor_id,action,resource_type,resource_id,timestamp) VALUES (?,?,?,?,?)',(actor_id,action,kind,identity,datetime.now(timezone.utc).isoformat()))
     def audit(self,actor,action,kind=None,identity=None):
         from dashboard import ACTIONS
         if action not in ACTIONS or (kind is not None and kind not in KINDS):raise ValueError('Invalid audit metadata.')
         if identity is not None:opaque(identity)
-        with self.connection() as conn:conn.execute('INSERT INTO security_activity(actor_professor_id,action,resource_type,resource_id,timestamp) VALUES (?,?,?,?,?)',(actor.professor_id,action,kind,identity,datetime.now(timezone.utc).isoformat()))
+        with self.connection() as conn:self._audit(conn,actor.professor_id,action,kind,identity)
     def activity(self,actor,limit=20):
         with self.connection() as conn:
             if not self.has(conn,'security_activity'):return []

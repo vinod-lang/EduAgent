@@ -606,3 +606,154 @@ deduplication is preserved; inaccessible matches reveal only a generic duplicate
 outcome, not another professor's filename/ID. Legacy adoption/backfill needs a
 separate explicit, auditable workflow. No Chroma reindex, ranking/model change,
 HTTP API, deployment or model inference is introduced.
+
+## Build 20 — versioned local web backend foundation
+
+Browser → FastAPI → session authentication → trusted ProfessorContext
+→ Build 19 authorization → application services → domain / storage / AI.
+Streamlit remains an independent presentation adapter using explicit single-user
+development compatibility; it does not call FastAPI. No frontend or deployment
+is introduced.
+
+`api.create_api_app()` supports injected services, sessions, settings and ephemeral
+workspaces. Import/factory creation does not create databases, sessions, Chroma
+clients, embeddings, models or servers. All HTTP resources live under `/api/v1`.
+Development OpenAPI is `/api/v1/openapi.json`, interactive docs `/api/v1/docs`.
+Request/response Pydantic v2 schemas forbid extra request fields. Domain validators
+remain authoritative, including Qwen normalization, evidence checks and fact
+continuity. Responses use allowlisted projections, never recursive serialization
+of internal domain dataclasses, prompts, rejected output, provenance or paths.
+
+### DEVELOPMENT AUTH ONLY
+
+This is a controlled seeded-identity selector, not production authentication or
+institutional SSO. Development authentication requires **both** explicit
+`EDUAGENT_API_MODE=development` and `EDUAGENT_DEV_AUTH=true`, a configured alias
+allowlist and a private random `EDUAGENT_DEV_ACCESS_KEY` of at least 32 characters.
+Login requires `X-Development-Key`. The frontend developer must obtain that key
+out-of-band; do not embed it in distributable frontend assets, commit it or put it
+in localStorage. This mechanism is only suitable for trusted local development.
+Production/institutional modes refuse development login, and enabling dev auth in
+those modes is a configuration error. No password database or fake production
+identity provider exists. Future institutional authentication must issue the same
+server-side principal through a separately implemented, reviewed provider.
+
+Explicit offline provisioning uses **separate** development runtime storage:
+
+```sh
+.venv-rebuild/bin/python -m api.bootstrap --database .runtime/api-development.sqlite3
+```
+
+The output contains aliases and opaque IDs only. Configure that JSON privately as
+`EDUAGENT_DEV_IDENTITIES`, generate a private development access key with standard
+secure randomness, and set the two development flags above. Do not use the original
+`eduagent.db`, `uploads/` or `chroma_db/`. Defaults are separate `.runtime/` SQLite,
+upload and Chroma paths; `.runtime/` is ignored. API path overrides are
+`EDUAGENT_API_DB`, `EDUAGENT_API_UPLOADS`, `EDUAGENT_API_CHROMA`. No vector ownership
+backfill or reindex occurs. Bootstrap is explicit and never performed on startup.
+Repeated bootstrap creates additional fictional identities rather than assigning
+ownership to existing data.
+
+Start the local backend after explicit provisioning/configuration:
+
+```sh
+.venv-rebuild/bin/uvicorn api.app:create_api_app --factory --host 127.0.0.1 --port 8000 --no-access-log
+```
+
+Use one process: ephemeral workspaces are deliberately process-local. Development
+reload is optional and discards these workspaces. No server is started by tests.
+
+### Sessions, cookies and CSRF
+
+`POST /api/v1/auth/dev-login` accepts a configured alias, never arbitrary trusted
+professor/role/institution claims. The server verifies an active repository
+identity and issues a cryptographically random session token. SQLite stores only
+its SHA-256 digest and a separate CSRF-token digest, professor ID, creation/expiry
+and revocation timestamps. Tokens are opaque, not JWTs. A session lasts one hour
+by default; expiration, logout and inactive/unknown professors are rejected.
+Authorization reloads repository metadata; permissions are not cached in cookies.
+Login rotates an existing valid session; logout revokes it and clears workspaces.
+
+The session cookie is HttpOnly, SameSite=Strict, scoped to `/api/v1`, with bounded
+Max-Age. Secure is enabled outside local development; local HTTP does not provide
+TLS security. The session token is never returned in JSON. Login returns a
+session-bound CSRF token for in-memory browser use. Protected POST/PUT/PATCH/DELETE
+require `X-CSRF-Token`; reads do not. `GET /auth/csrf` rotates the mutation token.
+Login itself requires JSON and a private custom header and rejects browser origins
+outside the configured allowlist. CORS is restrictive by default; configure exact
+`EDUAGENT_API_ORIGINS` values separated by commas, without trailing slashes.
+Wildcard credentialed CORS is forbidden. No JavaScript-visible auth localStorage.
+
+### API surface and private transient state
+
+- Authentication: development login, current safe profile, CSRF rotation, logout.
+- System: process health, configuration readiness and authenticated AI profile.
+  Readiness explicitly does not probe/open storage and does not claim production
+  readiness. AI status reports configured settings; effective model/fallback are
+  unknown until actual provider use, and no inference/inventory call is performed.
+- Materials: authorized list/get/hierarchy/upload/hierarchy update/cross-storage
+  deletion. Uploads are private; ownership is not accepted from request JSON.
+- Knowledge: grounded answer and authorized source references. Chunk text and raw
+  retrieval distances are not returned by the retrieval endpoint.
+- Assessments: validated quiz/paper generation, session-owned PYQ guidance and clean
+  PDF/DOCX export. PYQ handles cannot cross sessions.
+- Documents: private list/load/generate/edit/save/refine/version metadata/restore,
+  explicit confirmed facts and conflict resolution, feedback/preferences, exports.
+  Failed edits/refinements do not replace the valid workspace.
+- Students: bounded ephemeral CSV/XLSX upload, explicit mapping/normalization,
+  deterministic analysis/filtered CSV export and clear. Raw workbooks are discarded
+  after successful normalization; clearing a dataset invalidates dependent plans.
+  Student records never enter AI or new persistence.
+- Assistant: server-stored plan, preview and explicitly confirmed execution/retry.
+  Clients send handles, not executable plan JSON or ownership dataclasses. Each
+  action still passes Build 19 authorization and fixed registry validation.
+  Execution responses contain safe statuses; generated action payloads remain in
+  the server-side report in this initial API (artifact handoff is future work).
+- Dashboard/activity: deterministic authorized summaries and actor-safe events.
+
+Ephemeral handles are tied to a session, expire with it, and are bounded (100 per
+process). They are not persistent artifact IDs. Per-workspace locks serialize edits
+without holding one global lock during all model operations. Logout/expiry clears
+state; this is not a distributed session/artifact cache. Confirmed private facts
+are returned only by their explicit owner-authorized workflow, never generic logs.
+Exports contain professor-approved content, not generation diagnostics/model IDs.
+
+### Transactions and concurrency
+
+SQLite connections are opened/closed per operation. A ContextVar selects the
+request's database; it does not mutate the Streamlit DB_PATH or share a connection
+between threads. API domain calls enter that context on the same worker thread.
+The security/session repository uses the same explicit database path. Foreign keys
+are enabled and busy timeout is bounded at five seconds. WAL is intentionally not
+enabled: no persistent journal-mode change is needed for this foundation.
+
+Sensitive professor writes, membership read/modify/write, ownership sharing,
+material registration and document save obtain explicit SQLite write transactions.
+Creation and its ownership/audit registration commit together; audit failure rolls
+back registration. Membership and sharing audits commit with those changes.
+Existing cross-storage vector/file rollback and deletion partial-failure behavior
+remain authoritative; SQLite cannot transactionally commit Chroma/filesystem work.
+Saved document histories retain existing immutable-version checks. There are still
+short cross-operation authorization/revocation windows: this is not serializable
+cross-storage multi-tenant deployment. Future external administrative endpoints
+need equivalent transaction-scoped authorization, not direct repository access.
+
+### Errors, logging, headers and future seams
+
+Responses use `{error: {code, message, request_id}}` with sanitized 401/403/404/409/
+422/503 and unexpected 500 handling. Validation errors never echo submitted input,
+SQL, paths or raw model output. Every request receives a generated UUID correlation
+ID; client-provided IDs are not trusted. Bodies are capped at 11 MiB before parsing,
+with 10 MiB application upload limits. There is no custom payload/credential logging;
+keep development access logging disabled. Operators must configure future proxies
+and observability so credentials, cookies, query content and private data are not
+captured.
+
+Baseline headers: nosniff, no-referrer, frame denial and no-store. Production CSP,
+HSTS/TLS, proxy trust, institutional authentication and deployment remain deferred.
+Rate-control seams are API route groups/dependencies: development login, uploads,
+generation, exports and assistant execution require rate limits before deployment.
+No in-memory limiter is claimed to be production-safe. Long-running operations are
+synchronous worker calls; future SSE/job APIs should wrap application results with
+cancellation and safe status contracts. No background workers, token streaming,
+Redis, frontend, production SSO, model routing or deployment is introduced.

@@ -61,6 +61,7 @@ def approve_preference(instruction,category='tone_style',scope='document_type',d
     preference=Preference(identity,category,instruction,scope,document_type,template_id,tone,rule_key or infer_rule(clean(instruction,'Preference instruction',2000,True)),source_document_id,source_before_id,source_after_id,True,True,now,now)
     try:
         with db.material_connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
             init_document_schema(conn)
             if source_document_id:
                 for version in (source_before_id,source_after_id):
@@ -130,6 +131,7 @@ def save_feedback(document_id,version_id,rating,note=''):
     note=clean(note,'Feedback note',4000);identity=str(uuid.uuid4())
     try:
         with db.material_connection() as conn:
+            conn.execute('BEGIN IMMEDIATE')
             init_document_schema(conn)
             if not conn.execute('SELECT 1 FROM document_versions WHERE document_id=? AND version_id=?',(document_id,version_id)).fetchone():raise DocumentStorageError('Feedback version must belong to this saved document.')
             conn.execute('INSERT INTO document_feedback VALUES (?,?,?,?,?,?)',(identity,document_id,version_id,rating,note,datetime.now(timezone.utc).isoformat()))

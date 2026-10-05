@@ -22,3 +22,9 @@ defusedxml==0.7.1
 
 # Structured output validation (already installed in rebuild environment).
 jsonschema==4.26.0
+
+# Versioned local web backend / browser upload / test client
+fastapi==0.142.2
+uvicorn==0.54.0
+python-multipart==0.0.32
+pydantic==2.13.5

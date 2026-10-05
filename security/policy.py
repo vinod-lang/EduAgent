@@ -61,7 +61,7 @@ class IdentityService:
     def create(self,identity,*,context):
         actor=self._admin(context,identity.institution_id,identity.department_id)
         if Role.INSTITUTE_ADMIN in identity.roles and Role.INSTITUTE_ADMIN not in actor.roles:raise AccessDeniedError()
-        self.repository.bootstrap_professor(identity)
+        self.repository.create_professor(identity,actor=actor)
     def get(self,identity,*,context):
         actor=self.policy.actor(context);professor=self.repository.get_professor(identity)
         if professor is None:raise NotFoundError()
@@ -76,9 +76,9 @@ class IdentityService:
         if old.roles!=identity.roles or old.status!=identity.status:
             self._admin(context,identity.institution_id,identity.department_id)
             if Role.INSTITUTE_ADMIN in identity.roles and Role.INSTITUTE_ADMIN not in actor.roles:raise AccessDeniedError()
-        self.repository.update_professor(identity)
+        self.repository.update_professor(identity,actor=actor)
     def membership(self,professor_id,course_id,*,context,member=True):
         course=self.repository.course(course_id)
         if course is None:raise NotFoundError()
-        self._admin(context,course['institution_id'],course['department_id'])
-        self.repository.set_membership(professor_id,course_id,member=member)
+        actor=self._admin(context,course['institution_id'],course['department_id'])
+        self.repository.set_membership(professor_id,course_id,member=member,actor=actor)

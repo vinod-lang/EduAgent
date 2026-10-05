@@ -51,3 +51,6 @@ eduagent.db
 # Isolated benchmark outputs and caches (source fixtures remain tracked)
 /benchmarks/results/
 /benchmarks/cache/
+
+# Isolated local web-backend development runtime
+/.runtime/
