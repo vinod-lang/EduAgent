@@ -133,8 +133,13 @@ class ScopedDocuments(Protected):
         own=self.private(context)
         draft=self.base.generate(request,retry=retry,required_body_facts=required_body_facts,approved_preferences=self.list_preferences(context=context))
         return DocumentWorkspace(self.base.generated(draft,request.template_id),own)
-    def edit(self,workspace,draft,*,context=None):
+    def _version(self,workspace,expected):
+        if expected is not None and (type(expected) is not int or expected!=len(workspace.versions.history)):
+            from .errors import ConflictError
+            raise ConflictError()
+    def edit(self,workspace,draft,*,context=None,expected_version=None):
         self._workspace(workspace,context,Action.UPDATE)
+        self._version(workspace,expected_version)
         return replace(workspace,versions=self.base.edit(workspace.versions,draft))
     def refine(self,workspace,instruction,*,context=None,retry=False):
         self._workspace(workspace,context,Action.GENERATE)
@@ -164,8 +169,9 @@ class ScopedDocuments(Protected):
     def manage_fact(self,workspace,operation,*,context=None,**values):
         self._workspace(workspace,context,Action.UPDATE)
         return replace(workspace,versions=self.base.manage_fact(workspace.versions,operation,**values))
-    def resolve_conflict(self,workspace,draft,*,context=None,**decision):
+    def resolve_conflict(self,workspace,draft,*,context=None,expected_version=None,**decision):
         self._workspace(workspace,context,Action.UPDATE)
+        self._version(workspace,expected_version)
         return replace(workspace,versions=self.base.resolve_conflict(workspace.versions,draft,**decision))
     def export(self,workspace,*,context=None,format='pdf'):
         self._workspace(workspace,context,Action.EXPORT)

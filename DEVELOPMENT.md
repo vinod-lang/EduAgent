@@ -1015,3 +1015,76 @@ Student datasets are selected from current-session handles, with no student rows
 Pagination uses actor/filter predicates before an ID-descending cursor, bounded to 50 events (web default 20). Newly inserted events do not shift older pages. Numeric cursors are transport state, not displayed identities. Administrators cannot see another professor's private actor history. Home links to the Activity Center and active Assistant; legacy Upcoming URLs redirect to completed workspaces.
 
 All Build 26 inference tests/browser smoke use mocks and isolated synthetic runtime. Production SQLite/uploads/Chroma inventory must remain byte-for-byte unchanged. Streamlit, AI/embedding/RAG defaults and the existing domain validators remain intact.
+
+## Build 27 — product-wide web integration and hardening
+
+The web application is one authenticated professor workspace. Next.js → typed API client → FastAPI transport → scoped application services → existing product validators/security repositories. No web page supplies trusted ownership, executable plans or arbitrary function names. Streamlit remains the reference implementation.
+
+### Active route inventory
+
+All routes below except Login require `/auth/me` verification and per-operation authorization. Shared loading/error components handle requests; 401 clears auth and unmounts private children. Background focus verification preserves in-memory studio edits on success; verification failure hides the workspace. Route changes verify identity before showing the next page.
+
+| Route | Purpose / API dependencies | State / empty/error recovery | Mobile / handoff |
+|---|---|---|---|
+| `/login` | Explicit development identity; auth login/me | Cookie session; disabled-auth state; safe failed login | Responsive form; Home after sign-in |
+| `/home` | Dashboard + configuration-only AI status | Persistent material/document metadata; empty collections offer truthful links | Stacking summary; links to every active workspace |
+| `/courses` | Authorized materials grouped by hierarchy | Read-only course projection; no enrollment claims; empty/upload | Responsive lists; course detail |
+| `/courses/[course]` | Authorized material coverage | Missing course is unavailable, never substituted | Keyboard details/summary; Knowledge/Assessment/library scope |
+| `/library` | Authorized material metadata | Local filter/sort/page state; empty/upload or clear search | Contained scrolling; material detail/Knowledge |
+| `/library/upload` | Protected multipart material creation | In-memory file/form; errors preserve selection; duplicate is not success | Labelled hierarchy fields; detail/Knowledge on actual success |
+| `/library/[identity]` | Material get/edit/delete | Current authorization; partial deletion is warned; missing resource safe error | Responsive hierarchy and confirmation; scoped Knowledge/Assessment |
+| `/knowledge` | Materials + grounded answer; optional protected scope | In-memory answer; no-evidence gate; invalid handoff blocks default-scope generation | Responsive inputs; sources; explicit new-question recovery |
+| `/assessment` | Materials, PYQ, generate/review/edit/export/discard | Session artifact; revision conflict/invalid edit keeps valid server result; invalid handoff blocks generation | Responsive editor; explicit export; assistant artifact review |
+| `/documents` | Catalog/private list/preferences; generation, editor/facts/versions/export | Saved history persistent; editor ephemeral; missing handle shows safe error; explicit new/load | Responsive editor/dialog; saved-document and assistant handoffs |
+| `/students` | Spreadsheet parse/preview/normalize/analyze/detail/export/clear | Private session-only workbook/dataset; invalid rows excluded; clear/reupload recovery | Contained tables; deterministic assistant handoff |
+| `/assistant` | Plan/preview/execute/results/retry/handoff/discard | Server-owned session plans; clarification/refusal; uncertain execution requires result check | Stacking plan; typed studio destinations |
+| `/activity` | Actor-filtered cursor page | Safe event labels/time; empty/no fabricated records; retry/filter | Compact responsive list; stable pagination |
+| `/workspace/[slug]` | Legacy redirects only | Known completed workflows redirect; unknown slug is 404 | No remaining unreachable Upcoming UI |
+| `/` / unknown routes | Home redirect / safe not-found page | No private route content | Home recovery |
+
+Nested Course/Material routes now keep their parent navigation active. Existing skip navigation, native dialogs, focus rings, status announcements, labelled forms and reduced-motion styles remain. Automated accessibility coverage is supplementary, not a WCAG compliance certification.
+
+### Workspace, session and handoff lifetimes
+
+Workspaces remain bounded (100 total in the current single-process store), unguessable and session-owned. Expiry is purged lazily on workspace access; logout clears the session; student clear invalidates dependent plans. Generated artifacts persist only when an existing explicit save supports it. Saved documents/fact/version history remain private SQLite data. No browser localStorage/sessionStorage is used for recovery.
+
+Document and Assessment pages now warn on ordinary link navigation, sign-out and full-page unload when unsaved work is present. This does not cancel expiry or persist private data. Same-document history/back navigation in Next App Router is **not fully blockable by this hook**; browser-back loss remains a pilot UX gap. Background auth refresh no longer remounts a successfully verified studio. Temporary verification failures hide children conservatively and can still lose local state; saved history remains recoverable.
+
+Assistant handoffs carry only handles in URLs. Backend rechecks session, destination, ownership and material access. Failed Knowledge/Assessment incoming handles now require an explicit fresh-workflow link rather than enabling guessed/default generation. Knowledge handoff has no automatic inference. Studios remain the review/export authority.
+
+### Error, mutation and revision conventions
+
+The client never displays untrusted error messages or exception text. Invalid successful JSON and scalar JSON now become controlled `INVALID_RESPONSE` failures. JSON operations have a 180-second browser deadline combined with any supplied abort signal; provider timeouts remain unchanged. Stops cancel browser waiting only. No generation/network automatic retry; only a backend CSRF rejection is retried once because domain mutation did not execute. A safe route error boundary offers retry/Home without rendering or logging exceptions.
+
+Document edit and fact-conflict-resolution transports now accept `expected_version`. The web editor sends the current version count; the per-handle lock checks it before mutation, so near-concurrent stale edits cannot overwrite a newer valid version. Existing API clients may omit it for compatibility. Assessment continues its mandatory revision contract. Separate loaded handles for the same saved document are **not yet protected by a shared persistent-document revision**; that requires further work before multi-session professor editing. Fact mutation/refine/restore contracts remain the existing explicitly controlled workflow, not a new generalized concurrency framework.
+
+Existing pending/busy controls prevent repeated ordinary user submission; they are not distributed server idempotency keys. Retries after interrupted creation must remain explicit. No fake background progress is shown.
+
+### Privacy, security and scale audit
+
+Actor authorization applies before activity pagination; role alone does not grant another professor's private history. Cross-professor/session/guessed-handle and revocation tests retain coverage across materials, retrieval, documents/facts/preferences, assessments, students and plans. Compact Build 27 checks exercise lazy browsing, expiry reads, CSRF rejection, concurrent document edits, fact conflict/version/export and invalid assessment edit preservation. Existing unique-marker tests prove local student workflows never send records to AI or activity.
+
+Production AI defaults are unchanged: qwen2.5:3b preferred, llama3.2:3b fallback, all-MiniLM-L6-v2, candidate 15, final 5, cutoff 0.50, reranker/router disabled. Browsing metadata does not initialize vectors/inference. Explicit browser smoke uses synthetic temporary SQLite/uploads and in-memory vectors, with the provider mocked and access logging disabled. Production runtime inventory must remain byte-identical.
+
+API responses retain no-store/nosniff/no-referrer/frame-denial headers; Next retains nosniff/no-referrer/frame-denial. Development auth is explicitly labelled, uses HTTP-only SameSite cookies, hashed server tokens and mutation CSRF. TLS/HSTS/CSP, institutional identity and deployment policy are not claimed. Frontend renders text, not model HTML; no secrets in NEXT_PUBLIC or private content in URLs. Application paths do not log payloads; deployment access logs should exclude query strings/handles and credentials. Legacy CLI/reference entrypoints still need compatibility review before broad deletion.
+
+Uploads remain bounded to 10 MiB files / 11 MiB requests, validated by existing extraction/type rules; spreadsheet macros are unsupported. Exports reauthorize and use validated content; student CSV formula escaping remains tested. No antivirus/malware scanning service exists: quarantine/scanning is a future deployment requirement.
+
+Material and saved-document metadata listing remain unbounded on the server. Material UI renders 20 rows/page, students 50/page, Activity fetches 20/page. Course hierarchy and studio scope controls consume the complete authorized material list: replacing `/materials` with a paginated response now would break scope semantics. Split complete lightweight hierarchy options from paginated/searchable list endpoints in a later scale build. Dashboard/private document listing similarly needs bounded summaries/search before large institutional libraries. No arbitrary production capacity estimate is asserted.
+
+SQLite connections are request-local with explicit context/transaction closure, foreign keys and 5-second busy timeout. Per-workspace locks serialize same-handle changes without holding a global lock during AI calls. Current tests cover simultaneous reads/membership changes and conflicting edits. SQLite, in-process workspaces and synchronous inference are local development architecture, not an institutional concurrency design.
+
+### Reproducible browser checks
+
+Start `.venv-rebuild/bin/python tests/browser/build27_runtime.py`; it creates and disposes temporary storage and mocks generation. Start frontend with `EDUAGENT_FRONTEND_MODE=development EDUAGENT_FRONTEND_DEV_AUTH=true EDUAGENT_DEV_ALIASES=professor-a EDUAGENT_DEV_ACCESS_KEY=synthetic-development-key-build27-000000 npm run dev`. Run `node tests/browser/build27_smoke.mjs` from the repository. The synthetic key is fixture-only, never a production credential. The browser script uses locally installed Chrome; adapt its executable path on other machines. These scripts are manual smoke tools, not automatically executed by pytest/Vitest.
+
+### Release-readiness classification
+
+- **READY / STABLE FOR CURRENT DEVELOPMENT:** existing typed services, validators, authorization and mocked regression workflows; major web destinations active; isolated test storage.
+- **NEEDS WORK BEFORE PROFESSOR PILOT:** broader human keyboard/accessibility testing; browser-back unsaved work handling; real-world upload/performance limits; interrupted generation recovery; review development-only dependency advisories; backup and consent/support procedures.
+- **NEEDS WORK BEFORE MULTI-PROFESSOR DEPLOYMENT:** institutional auth, persistent cross-handle revision conflict prevention, rate limiting, bounded listings, durable sessions/jobs/workspaces, shared relational/file/vector infrastructure.
+- **NEEDS WORK BEFORE INSTITUTIONAL PRODUCTION:** deployment/TLS/CSP/security review, monitoring, retention policy, malware scanning, backup/restore rehearsals, inference capacity, institutional privacy approval and operational ownership.
+
+Do not call this build production-ready. Next phase should resolve pilot blockers and validate real professor journeys before expanding capabilities or replacing local storage infrastructure.
+
+Background refresh also keys the protected workspace by professor identity: changing identity clears previous professor local state, while successful same-identity verification preserves it. The release audit does not certify every permutation of interruption, every route at every viewport, or complete WCAG conformance. Browser smoke checks representative keyboard activation and automated structural accessibility (contrast excluded); manual tab-order/screen-reader/contrast testing remains a pilot prerequisite.

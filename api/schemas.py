@@ -27,6 +27,7 @@ class DocumentRequest(Transport):
     recipient:str='';sender:str='';title:str='';date:str='';reference_number:str='';subject:str='';signature:str='';additional_context:str=''
 class DocumentEdit(Transport):
     title:str='';recipient:str='';sender:str='';date:str='';reference_number:str='';subject:str='';salutation:str='';body:list[str];closing:str='';signature:str=''
+class VersionedDocumentEdit(DocumentEdit):expected_version:int|None=Field(default=None,ge=1)
 class Refine(Transport):instruction:str=Field(min_length=1,max_length=4000)
 class Save(Transport):status:Literal['Draft','Final']='Draft'
 class Restore(Transport):index:int=Field(ge=0)
@@ -98,7 +99,7 @@ class ActivityResponse(Transport):actor_professor_id:str;action:str;timestamp:st
 class DashboardResponse(Transport):material_count:int;courses:list[str];materials:list[MaterialResponse];saved_drafts:list[DraftMetadata];activity:list[ActivityResponse]
 
 class ResolveEdit(Transport):
-    draft:DocumentEdit
+    draft:VersionedDocumentEdit
     update_confirmed:bool
     replacements:dict[str,str]=Field(default_factory=dict)
 class PreferenceUpdate(Transport):instruction:str|None=None;active:bool|None=None

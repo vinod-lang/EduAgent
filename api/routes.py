@@ -164,10 +164,10 @@ def save_document(handle:str,body:S.Save,request:Request,p=Depends(principal),ap
     with request.app.state.workspaces.item(p,handle,'document') as a:
         a=invoke(request,api.documents.save,a,context=p.context,status=body.status);request.app.state.workspaces.update(p,handle,'document',a);return P.document(a,handle)
 @router.patch('/document-workspaces/{handle}',tags=['Documents'],summary='Apply explicit professor edits with fact validation',response_model=S.DocumentResponse)
-def edit_document(handle:str,body:S.DocumentEdit,request:Request,p=Depends(principal),api=Depends(services)):
+def edit_document(handle:str,body:S.VersionedDocumentEdit,request:Request,p=Depends(principal),api=Depends(services)):
     with request.app.state.workspaces.item(p,handle,'document') as a:
-        draft=invoke(request,replace,a.versions.current,**body.model_dump(exclude={'body'}),body=tuple(body.body))
-        a=invoke(request,api.documents.edit,a,draft,context=p.context);request.app.state.workspaces.update(p,handle,'document',a);return P.document(a,handle)
+        draft=invoke(request,replace,a.versions.current,**body.model_dump(exclude={'body','expected_version'}),body=tuple(body.body))
+        a=invoke(request,api.documents.edit,a,draft,context=p.context,expected_version=body.expected_version);request.app.state.workspaces.update(p,handle,'document',a);return P.document(a,handle)
 @router.post('/document-workspaces/{handle}/refine',tags=['Documents'],summary='Refine while protecting confirmed facts',response_model=S.DocumentResponse)
 def refine_document(handle:str,body:S.Refine,request:Request,p=Depends(principal),api=Depends(services)):
     with request.app.state.workspaces.item(p,handle,'document') as a:
@@ -325,8 +325,8 @@ def activity(request:Request,p=Depends(principal),api=Depends(services)):
 @router.post('/document-workspaces/{handle}/resolve-edit',tags=['Documents'],response_model=S.DocumentResponse,summary='Explicitly resolve changed confirmed facts')
 def resolve_edit(handle:str,body:S.ResolveEdit,request:Request,p=Depends(principal),api=Depends(services)):
     with request.app.state.workspaces.item(p,handle,'document') as a:
-        data=body.draft.model_dump();data['body']=tuple(data['body']);draft=invoke(request,replace,a.versions.current,**data)
-        a=invoke(request,api.documents.resolve_conflict,a,draft,context=p.context,update_confirmed=body.update_confirmed,replacements=body.replacements)
+        data=body.draft.model_dump(exclude={'expected_version'});data['body']=tuple(data['body']);draft=invoke(request,replace,a.versions.current,**data)
+        a=invoke(request,api.documents.resolve_conflict,a,draft,context=p.context,expected_version=body.draft.expected_version,update_confirmed=body.update_confirmed,replacements=body.replacements)
         request.app.state.workspaces.update(p,handle,'document',a);return P.document(a,handle)
 @router.patch('/preferences/{identity}',tags=['Documents'],response_model=S.StatusResponse,summary='Update private preference explicitly')
 def update_preference(identity:str,body:S.PreferenceUpdate,request:Request,p=Depends(principal),api=Depends(services)):

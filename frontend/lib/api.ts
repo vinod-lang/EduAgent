@@ -27,14 +27,14 @@ export class APIClient {
   clear() { this.csrf = null; this.csrfPending = null; }
   private async raw<T>(path: string, options: RequestInit = {}): Promise<T> {
     let response: Response;
-    try { response = await this.transport(`/api/v1${path}`, { ...options, credentials: "include", cache: "no-store" }); }
+    try { response = await this.transport(`/api/v1${path}`, { ...options, signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(180000)]) : AbortSignal.timeout(180000), credentials: "include", cache: "no-store" }); }
     catch (error) { if (record(error) && error.name === "AbortError") throw error; throw new APIError(0, "NETWORK_ERROR"); }
     if (!response.ok) { const error = await parseError(response); if (response.status === 401) { this.clear(); this.unauthorized?.(); } throw error; }
-    return response.json() as Promise<T>;
+    try { const value: unknown = await response.json(); if (!record(value) && !Array.isArray(value)) throw new Error(); return value as T; } catch { throw new APIError(502, "INVALID_RESPONSE"); }
   }
   private async ensureCSRF() {
     if (this.csrf) return;
-    if (!this.csrfPending) this.csrfPending = this.raw<{ csrf_token: string }>("/auth/csrf").then((data) => { this.csrf = data.csrf_token; }).finally(() => { this.csrfPending = null; });
+    if (!this.csrfPending) this.csrfPending = this.raw<{ csrf_token: string }>("/auth/csrf").then((data) => { if (typeof data.csrf_token !== "string" || !data.csrf_token) throw new APIError(502,"INVALID_RESPONSE"); this.csrf = data.csrf_token; }).finally(() => { this.csrfPending = null; });
     await this.csrfPending;
   }
   async request<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
@@ -65,7 +65,7 @@ export class APIClient {
   discardAssessment(handle:string){return this.mutate<{status:string}>(`/assessments/${encodeURIComponent(handle)}`,"DELETE");}
   uploadPYQ(file:File){const form=new FormData();form.append("file",file);return this.mutate<{handle:string}>("/assessments/pyq","POST",form);}
   async exportAssessment(handle:string,format:'pdf'|'docx',answerKey:boolean){
-    let response:Response;try{response=await this.transport(`/api/v1/assessments/${encodeURIComponent(handle)}/export?format=${format}&answer_key=${answerKey}`,{credentials:"include",cache:"no-store"});}catch{throw new APIError(0,"NETWORK_ERROR");}
+    let response:Response;try{response=await this.transport(`/api/v1/assessments/${encodeURIComponent(handle)}/export?format=${format}&answer_key=${answerKey}`,{credentials:"include",cache:"no-store",signal:AbortSignal.timeout(180000)});}catch{throw new APIError(0,"NETWORK_ERROR");}
     if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
   }
   documentCatalog(signal?:AbortSignal){return this.request<DocumentCatalog>("/documents/catalog",undefined,signal);}
@@ -73,13 +73,13 @@ export class APIClient {
   loadDocument(id:string,signal?:AbortSignal){return this.request<StudioDocument>(`/documents/${encodeURIComponent(id)}`,undefined,signal);}
   generateDocument(body:DocumentRequest,signal?:AbortSignal){return this.request<StudioDocument>("/documents/generate",body,signal);}
   reviewDocument(handle:string,signal?:AbortSignal){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}`,undefined,signal);}
-  editDocument(handle:string,body:DocumentEdit){return this.mutate<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}`,"PATCH",body);}
+  editDocument(handle:string,body:DocumentEdit,expected_version?:number){return this.mutate<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}`,"PATCH",{...body,expected_version});}
   saveDocument(handle:string,status:'Draft'|'Final'){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/save`,{status});}
   refineDocument(handle:string,instruction:string,signal?:AbortSignal){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/refine`,{instruction},signal);}
   restoreDocument(handle:string,index:number){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/restore`,{index});}
   compareDocument(handle:string,before:number,after:number){return this.request<DocumentChange[]>(`/document-workspaces/${encodeURIComponent(handle)}/diff?before=${before}&after=${after}`);}
   documentConflicts(handle:string,draft:DocumentEdit){return this.request<DocumentFact[]>(`/document-workspaces/${encodeURIComponent(handle)}/conflicts`,draft);}
-  resolveDocument(handle:string,draft:DocumentEdit,update_confirmed:boolean,replacements:Record<string,string>){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/resolve-edit`,{draft,update_confirmed,replacements});}
+  resolveDocument(handle:string,draft:DocumentEdit,update_confirmed:boolean,replacements:Record<string,string>,expected_version?:number){return this.request<StudioDocument>(`/document-workspaces/${encodeURIComponent(handle)}/resolve-edit`,{draft:{...draft,expected_version},update_confirmed,replacements});}
   manageDocumentFact(handle:string,body:{operation:'add'|'update'|'remove';field?:string;value?:string;fact_id?:string}){return this.request<{status:string}>(`/document-workspaces/${encodeURIComponent(handle)}/facts`,body);}
   discardDocument(handle:string){return this.mutate<{status:string}>(`/document-workspaces/${encodeURIComponent(handle)}`,"DELETE");}
   documentFeedback(handle:string,rating:'Good'|'Needs Changes',note:string){return this.request<{status:string}>(`/document-workspaces/${encodeURIComponent(handle)}/feedback`,{rating,note});}
@@ -88,7 +88,7 @@ export class APIClient {
   updatePreference(id:string,body:{instruction?:string;active?:boolean}){return this.mutate<{status:string}>(`/preferences/${encodeURIComponent(id)}`,"PATCH",body);}
   deletePreference(id:string){return this.mutate<{status:string}>(`/preferences/${encodeURIComponent(id)}`,"DELETE");}
   async exportDocument(handle:string,format:'pdf'|'docx'){
-    let response:Response;try{response=await this.transport(`/api/v1/document-workspaces/${encodeURIComponent(handle)}/export?format=${format}`,{credentials:"include",cache:"no-store"});}catch{throw new APIError(0,"NETWORK_ERROR");}
+    let response:Response;try{response=await this.transport(`/api/v1/document-workspaces/${encodeURIComponent(handle)}/export?format=${format}`,{credentials:"include",cache:"no-store",signal:AbortSignal.timeout(180000)});}catch{throw new APIError(0,"NETWORK_ERROR");}
     if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
   }
   uploadStudents(file:File){const form=new FormData();form.append("file",file);return this.mutate<{handle:string;sheets:string[]}>("/students/upload","POST",form);}
@@ -98,7 +98,7 @@ export class APIClient {
   studentDetail(handle:string,index:number,filters:import("@/types/students").Filters){return this.request<import("@/types/students").Detail>(`/students/${encodeURIComponent(handle)}/detail`,{index,marks_threshold:filters.marks_threshold,attendance_threshold:filters.attendance_threshold});}
   clearStudents(handle:string){return this.mutate<{status:string}>(`/students/${encodeURIComponent(handle)}`,"DELETE");}
   async exportStudents(handle:string,filters:import("@/types/students").Filters){
-    await this.ensureCSRF();const run=()=>this.transport(`/api/v1/students/${encodeURIComponent(handle)}/export`,{method:"POST",credentials:"include",cache:"no-store",headers:{"Content-Type":"application/json","X-CSRF-Token":this.csrf??""},body:JSON.stringify(filters)});
+    await this.ensureCSRF();const run=()=>this.transport(`/api/v1/students/${encodeURIComponent(handle)}/export`,{method:"POST",credentials:"include",cache:"no-store",signal:AbortSignal.timeout(180000),headers:{"Content-Type":"application/json","X-CSRF-Token":this.csrf??""},body:JSON.stringify(filters)});
     let response:Response;try{response=await run();if(response.status===403){const error=await parseError(response.clone());if(error.code==="CSRF_REJECTED"){this.csrf=null;await this.ensureCSRF();response=await run();}}}catch{throw new APIError(0,"NETWORK_ERROR");}
     if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
   }
@@ -112,7 +112,7 @@ export class APIClient {
   discardAssistant(handle:string){return this.mutate<{status:string}>(`/assistant/${encodeURIComponent(handle)}`,"DELETE");}
   activityPage(category='All',before:number|null=null,signal?:AbortSignal){const params=new URLSearchParams({category});if(before!==null)params.set('before',String(before));return this.request<import("@/types/assistant").ActivityPage>(`/activity/page?${params}`,undefined,signal);}
   knowledgeScope(handle:string,signal?:AbortSignal){return this.request<{question:string;filters:Record<string,string>}>(`/knowledge-scopes/${encodeURIComponent(handle)}`,undefined,signal);}
-  async login(identity: string) { const data = await this.raw<{ csrf_token: string }>("/auth/dev-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identity }) }); this.csrf = data.csrf_token; }
+  async login(identity: string) { const data = await this.raw<{ csrf_token: string }>("/auth/dev-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identity }) }); if (typeof data.csrf_token !== "string" || !data.csrf_token) throw new APIError(502,"INVALID_RESPONSE"); this.csrf = data.csrf_token; }
   async logout() { await this.request("/auth/logout", {}); this.clear(); }
   me(signal?: AbortSignal) { return this.request<Professor>("/auth/me", undefined, signal); }
   dashboard(signal?: AbortSignal) { return this.request<Dashboard>("/dashboard", undefined, signal); }
