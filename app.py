@@ -1,141 +1,116 @@
+from retrieval import RetrievalError
+from rag_ui import scope_options
+from dashboard import PAGES
+from workspace_ui import render_dashboard, render_activity
+from assessment_ui import render_assessment_studio
+from config import get_max_upload_bytes, ConfigurationError
 import streamlit as st
 import os
 from content_agent import extract_text_from_pdf
-from vector_store import add_pdf_to_database
-from student_support_agent import answer_question
+from material_service import MaterialError
 from assessment_agent import generate_questions
 from document_agent import generate_document
-from analytics_agent import analyze_performance
 from coordinator import classify_intent
-from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes
+from export_utils import generate_docx_bytes, generate_quiz_pdf_bytes, generate_question_paper_pdf_bytes
 from document_agent import generate_batch_attendance_warnings
-from db import init_db, add_course_if_new, get_all_courses, add_document_record, get_documents_for_course, log_activity, get_recent_activity
+from application import create_application_services
+from security.models import development_legacy_context
+from application.errors import ApplicationError
+services = create_application_services(context=development_legacy_context())
+list_materials = services.materials.list_materials
+get_all_courses = services.materials.courses
+available_courses = services.materials.available_courses
+upload_material = services.materials.upload_material
+delete_material = services.materials.delete
+edit_hierarchy = services.materials.edit_hierarchy
+answer_question = services.knowledge.answer_question
+get_dashboard_summary = services.dashboard.summary
+get_activity_view = services.activity.recent
+from assessment_agent import generate_questions, generate_personalized_practice
+from assessment_agent import generate_questions, generate_personalized_practice, generate_question_paper
 
-init_db()  # creates tables if they don't exist yet — safe to call every run
+from ai_provider import AIProviderError
+
+
+def call_ai(function, *args, **kwargs):
+    try:
+        return function(*args, **kwargs)
+    except (ApplicationError, AIProviderError, RetrievalError) as exc:
+        st.error(str(exc))
+        st.stop()
+
+
+services.initialize_local_storage()  # explicit startup, not application import/construction
 
 
 # Page setup
 st.set_page_config(page_title="EduAgent", page_icon="🎓", layout="centered")
 st.title("🎓 EduAgent — AI Assistant for Course Material")
 
-# --- COORDINATOR LOGIC ---
-# This sidebar selection IS the coordinator: it decides which
-# "agent" gets control based on what the user wants to do.
+# Dashboard hosts the coordinator UI; sidebar navigation opens dedicated workflows.
+legacy_navigation = {"Smart Assistant": "Professor Dashboard", "Courses & Activity": "Activity Log",
+                     "Generate Quiz": "Assessment Studio", "Question Paper": "Assessment Studio",
+                     "Draft Document": "Document Studio", "Analytics": "Student Data Hub"}
+if st.session_state.get("navigation") in legacy_navigation:
+    st.session_state["navigation"] = legacy_navigation[st.session_state["navigation"]]
 page = st.sidebar.radio(
     "Choose an action:",
-    ["Smart Assistant","Upload Content", "Ask a Question", "Generate Quiz", "Draft Document", "Analytics", "Courses & Activity"]
+    PAGES, key="navigation"
 )
 
 # Make sure a folder exists to temporarily store uploaded files
 os.makedirs("uploads", exist_ok=True)
 
-# --- COORDINATOR AGENT (smart routing) ---
-if page == "Smart Assistant":
-    st.header("🧭 Coordinator Agent")
-    st.write("Type what you want in plain English. The coordinator will decide which agent(s) should handle it.")
+def navigate_to(page_name):
+    st.session_state['navigation'] = page_name
 
-    user_input = st.text_area(
-        "What do you need?",
-        placeholder="e.g. 'Make a 10-question quiz from Unit 3 and a notice announcing it for tomorrow'"
-    )
 
-    if st.button("Submit"):
-        if user_input.strip() == "":
-            st.warning("Please type a request.")
-        else:
-            with st.spinner("Deciding which agent(s) should handle this..."):
-                intent = classify_intent(user_input)
-
-            st.caption(f"🔀 Routed to: **{intent}**")
-
-            if intent == "question":
-                with st.spinner("Thinking..."):
-                    answer, sources = answer_question(user_input)
-                st.write(answer)
-                if sources:
-                    st.caption(f"📚 Source: {', '.join(sources)}")
-
-            elif intent == "quiz":
-                with st.spinner("Generating quiz..."):
-                    questions = generate_questions(source_name="PCA", num_questions=5)
-                if questions:
-                    for i, q in enumerate(questions, start=1):
-                        st.markdown(f"**Q{i}. {q['question']}**")
-                        if "options" in q:
-                            for letter, opt in q["options"].items():
-                                st.write(f"{letter}) {opt}")
-                else:
-                    st.error("Could not generate a valid quiz.")
-
-            elif intent == "document":
-                with st.spinner("Drafting document..."):
-                    doc = generate_document("Notice", {
-                        "course": "General", "subject": user_input,
-                        "details": user_input, "date": "TBD"
-                    })
-                st.text_area("Result:", value=doc, height=250)
-
-            elif intent == "quiz_and_notice":
-                # STEP 1: Assessment Agent runs first
-                with st.spinner("Step 1/2 — Generating quiz..."):
-                    questions = generate_questions(source_name="PCA", num_questions=5)
-
-                # STEP 2: Document Agent runs next, referencing the quiz
-                with st.spinner("Step 2/2 — Drafting announcement notice..."):
-                    doc = generate_document("Notice", {
-                        "course": "General",
-                        "subject": "Upcoming Test",
-                        "details": user_input,
-                        "date": "Tomorrow"
-                    })
-
-                st.success("✅ Two agents completed this request — please review both before use.")
-
-                st.subheader("1️⃣ Generated Quiz (Assessment Agent)")
-                if questions:
-                    for i, q in enumerate(questions, start=1):
-                        st.markdown(f"**Q{i}. {q['question']}**")
-                        if "options" in q:
-                            for letter, opt in q["options"].items():
-                                st.write(f"{letter}) {opt}")
-                else:
-                    st.error("Quiz generation failed.")
-
-                st.subheader("2️⃣ Generated Notice (Document Agent)")
-                st.text_area("Notice:", value=doc, height=200)
-
-            else:
-                st.info("I couldn't confidently classify this request. Try rephrasing, or use the sidebar tabs directly.")
+if page == "Professor Dashboard":
+    render_dashboard(get_dashboard_summary(), list_materials(), get_all_courses(),
+                     call_ai=call_ai, classify_intent=classify_intent, answer_question=answer_question,
+                     generate_questions=generate_questions, generate_document=generate_document,
+                     navigate_to=navigate_to, edit_hierarchy=edit_hierarchy, delete_material=delete_material)
 
 
 # --- PAGE 1: CONTENT AGENT ---
 if page == "Upload Content":
     st.header("📄 Content Agent")
-    st.write("Upload a PDF to add it to the searchable course material.")
+    st.write("Upload PDF, PNG, JPG or JPEG academic content. Images use local Tesseract OCR.")
 
-    course = st.text_input("Course name:", value="Machine Learning")
-    unit = st.text_input("Unit/Topic:", value="Unit 1")
-
-    uploaded_file = st.file_uploader("Choose a PDF", type="pdf")
-
-    if uploaded_file is not None:
-        save_path = os.path.join("uploads", uploaded_file.name)
-        with open(save_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-        st.success(f"Uploaded: {uploaded_file.name}")
+    course = st.text_input("Course name:", value="B.Tech CSE")
+    semester = st.text_input("Semester:", value="Semester 5")
+    subject = st.text_input("Subject:", value="Machine Learning")
+    unit = st.text_input("Unit:", value="Unit 1")
+    uploaded_file = st.file_uploader("Choose a PDF or image", type=["pdf", "png", "jpg", "jpeg"])
+    try:
+        upload_limit = get_max_upload_bytes()
+        st.caption(f"Maximum upload size: {upload_limit / 1024 / 1024:g} MB")
+    except ConfigurationError as exc:
+        st.error(str(exc))
+        st.stop()
 
     if st.button("Add to Database"):
-        with st.spinner("Processing PDF and storing chunks..."):
-            source_name = uploaded_file.name.replace(".pdf", "")
-            add_pdf_to_database(save_path, source_name, course=course, unit=unit)
-
-            # NEW: also record this in our persistent database
-            add_course_if_new(course)
-            add_document_record(source_name, course, unit, uploaded_file.name)
-            log_activity("upload", f"Uploaded '{uploaded_file.name}' to {course} / {unit}")
-
-        st.success(f"✅ Added to '{course} / {unit}'!")
+        if uploaded_file is None:
+            st.warning("Choose a PDF or image first.")
+        else:
+            try:
+                if uploaded_file.size > upload_limit:
+                    raise MaterialError("Upload exceeds the configured size limit.")
+                with st.spinner("Extracting content and storing chunks..."):
+                    outcome = upload_material(uploaded_file.getvalue(), uploaded_file.name,
+                        dict(course=course, semester=semester, subject=subject, unit=unit))
+                if outcome["success"]:
+                    material = outcome["material"]
+                    st.success(f"Indexed {material['original_filename']} — " + " → ".join(material[k] for k in ('course','semester','subject','unit')))
+                    if outcome.get("text_preview"):
+                        st.caption("Extracted OCR text preview (up to 1,000 characters)")
+                        st.text(outcome["text_preview"])
+                else:
+                    st.warning(outcome["error"])
+                for warning in outcome.get("warnings", []):
+                    st.warning(warning)
+            except (ApplicationError, MaterialError) as exc:
+                st.error(str(exc))
 
 
 # --- PAGE 2: STUDENT SUPPORT AGENT ---
@@ -143,196 +118,64 @@ elif page == "Ask a Question":
     st.header("💬 Student Support Agent")
     st.write("Ask a question based on the uploaded course material.")
 
-    course_filter = st.text_input("Limit search to course (optional):", value="")
+    materials = list_materials()
+    scope = {}
+    selected_course = st.selectbox("Course scope:", [None] + available_courses(materials),
+                                   format_func=lambda value: "All courses" if value is None else value)
+    if selected_course is not None:
+        scope['course'] = selected_course
+    for level in ('semester', 'subject', 'unit'):
+        choices = scope_options(materials, scope, level)
+        selected = st.selectbox(level.capitalize() + " scope:", [None] + choices,
+                                format_func=lambda value: "All / no filter" if value is None else value)
+        if selected is not None:
+            scope[level] = selected
+    material_choices = scope_options(materials, scope, 'material_id')
+    selected_material = st.selectbox("Material scope:", [None] + list(material_choices),
+        format_func=lambda value: "All matching materials" if value is None else material_choices[value])
+    if selected_material is not None:
+        scope['material_id'] = selected_material
+    st.caption("Legacy content remains searchable broadly or by course. Deeper filters require stored metadata and exclude incompatible legacy chunks.")
     question = st.text_input("Your question:")
 
     if st.button("Ask"):
         if question.strip() == "":
             st.warning("Please type a question first.")
         else:
-            with st.spinner("Thinking..."):
-                course_arg = course_filter if course_filter.strip() else None
-                answer, sources = answer_question(question, course=course_arg)
-            st.markdown("**Answer:**")
-            st.write(answer)
-            if sources:
-                st.caption(f"📚 Source: {', '.join(sources)}")
-
-
-# --- PAGE 3: ASSESSMENT AGENT ---
-elif page == "Generate Quiz":
-    st.header("📝 Assessment Agent")
-    st.write("Generate questions from the course material.")
-
-    source_name = st.text_input("Source name:", value="PCA")
-    course_filter = st.text_input("Course (optional):", value="")
-    question_type = st.selectbox("Question type:", ["MCQ", "Descriptive"])
-    difficulty = st.selectbox("Difficulty:", ["Easy", "Medium", "Hard"])
-    num_questions = st.slider("Number of questions:", 1, 10, 5)
-
-    if st.button("Generate Questions"):
-        with st.spinner("Generating questions... this can take a minute on a local model"):
-            course_arg = course_filter if course_filter.strip() else None
-            questions = generate_questions(
-                source_name=source_name,
-                course=course_arg,
-                num_questions=num_questions,
-                question_type=question_type,
-                difficulty=difficulty
-            )
-
-        if questions is None:
-            st.error("Could not generate valid questions. Try again.")
-        else:
-            st.session_state["questions"] = questions
-            log_activity("generate_quiz", f"{num_questions} {question_type} questions from {source_name}")
-
-    if "questions" in st.session_state:
-        questions = st.session_state["questions"]
-
-        st.subheader("Generated Questions (review before use)")
-        pdf_buffer = generate_quiz_pdf_bytes(questions, title=f"{source_name} — Quiz")
-        st.download_button(
-        label="📥 Download Quiz + Answer Key (PDF)",
-        data=pdf_buffer,
-        file_name=f"{source_name.replace(' ', '_')}_quiz.pdf",
-        mime="application/pdf"
-    )
-        for i, q in enumerate(questions, start=1):
-            st.markdown(f"**Q{i}. {q['question']}**")
-
-            if "options" in q:
-                for letter, opt in q["options"].items():
-                    st.write(f"{letter}) {opt}")
-                with st.expander(f"Show answer — Q{i}"):
-                    st.write(f"**Answer:** {q['correct_answer']}")
-                    st.write(q.get("explanation", ""))
+            with st.spinner("Retrieving evidence and answering..."):
+                result = call_ai(answer_question, question, filters=scope)
+            if result.retrieval_status == 'no_evidence':
+                from generation_ui import render_diagnostic
+                from generation_diagnostics import failed
+                from structured_generation import Failure
+                render_diagnostic(failed(Failure.INSUFFICIENT_EVIDENCE))
+                st.info(result.answer)
             else:
-                with st.expander(f"Show model answer — Q{i}"):
-                    st.write(q["model_answer"])
+                st.success("Grounded answer available. Review the answer against its sources.")
+                st.markdown("**Answer:**")
+                st.write(result.answer)
+            if result.sources:
+                st.markdown("**Retrieved evidence sources:**")
+                for source in result.sources:
+                    st.caption(source)
+            with st.expander("Development: retrieval diagnostics"):
+                st.json(result.retrieval.diagnostics.to_dict())
 
-            st.caption(f"📚 Source: {q['source_label']}")
-            st.write("---")
 
-# --- PAGE 4: DOCUMENT AGENT ---
-elif page == "Draft Document":
-    st.header("📋 Document Agent")
-    st.write("Pick a template and fill in the details — no need to write full sentences.")
+# Unified professor-facing assessment workflow.
+elif page == "Assessment Studio":
+    render_assessment_studio()
 
-    from document_agent import TEMPLATES  # import the template definitions
 
-    template_name = st.selectbox("Document type:", list(TEMPLATES.keys()))
-    fields_needed = TEMPLATES[template_name]["fields"]
+elif page == "Document Studio":
+    from document_ui import render_document_studio
+    render_document_studio()
 
-    # Dynamically create one input box per field this template needs
-    field_values = {}
-    for field in fields_needed:
-        label = field.replace("_", " ").capitalize()
-        field_values[field] = st.text_input(label, key=f"doc_{field}")
+elif page == "Student Data Hub":
+    from student_hub_ui import render_student_hub
+    render_student_hub()
 
-    if st.button("Generate Document"):
-        missing = [f for f in fields_needed if not field_values[f].strip()]
-        if missing:
-            st.warning(f"Please fill in: {', '.join(missing)}")
-        else:
-            with st.spinner("Drafting document..."):
-                document = generate_document(template_name, field_values)
-            st.session_state["document"] = document
-            log_activity("generate_document", f"{template_name} document generated")
-
-if "document" in st.session_state:
-    st.subheader("Generated Document (review before sending)")
-    st.text_area("Result:", value=st.session_state["document"], height=300)
-
-    docx_buffer = generate_docx_bytes(st.session_state["document"])
-    st.download_button(
-        label="📥 Download as Word Document (.docx)",
-        data=docx_buffer,
-        file_name=f"{template_name.replace(' ', '_')}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-
-# --- PAGE 5: ANALYTICS AGENT ---
-elif page == "Analytics":
-    st.header("📊 Analytics Agent")
-    st.write("Upload assessment history (multiple rows per student) to identify trend-based academic support needs.")
-
-    csv_file = st.file_uploader("Choose a CSV file", type="csv")
-
-    if csv_file is not None:
-        save_path = os.path.join("uploads", csv_file.name)
-        with open(save_path, "wb") as f:
-            f.write(csv_file.getbuffer())
-
-        df, summary = analyze_performance(save_path)
-
-        st.metric("Total Students", summary["total_students"])
-
-        st.subheader("⚠️ Students who may benefit from faculty intervention")
-        if summary["students_needing_support"]:
-            for name in summary["students_needing_support"]:
-                st.write(f"- {name}")
-        else:
-            st.write("No students currently flagged. 🎉")
-
-        st.subheader("Full Report (with evidence)")
-        for _, row in df.iterrows():
-            icon = "⚠️" if row["needs_support"] else "✅"
-            with st.expander(f"{icon} {row['student_name']}"):
-                st.write(f"**Latest marks:** {row['latest_marks']} ({row['marks_trend']})")
-                st.write(f"**Latest attendance:** {row['latest_attendance']}% ({row['attendance_trend']})")
-                st.write(f"**Reason:** {row['reasons']}")
-                # --- BATCH WORKFLOW: Analytics → Document Agent ---
-        flagged_df = df[df["needs_support"]]
-
-        if len(flagged_df) > 0:
-            st.subheader("✉️ Batch Action")
-            st.write(f"{len(flagged_df)} student(s) flagged. Generate a personalized attendance warning letter for each with one click.")
-
-            course_name_input = st.text_input("Course name for these letters:", value="Machine Learning", key="batch_course")
-
-            if st.button("Generate Warning Letters for All Flagged Students"):
-                with st.spinner(f"Drafting {len(flagged_df)} letters..."):
-                    letters = generate_batch_attendance_warnings(flagged_df, course_name=course_name_input)
-                st.session_state["batch_letters"] = letters
-                log_activity("batch_warnings", f"{len(letters)} attendance warning letters generated")
-
-        if "batch_letters" in st.session_state:
-            st.success(f"✅ Generated {len(st.session_state['batch_letters'])} letters — review each before sending.")
-
-            for item in st.session_state["batch_letters"]:
-                with st.expander(f"📄 Letter for {item['student_name']}"):
-                    st.text_area("Content:", value=item["document"], height=200, key=f"letter_{item['student_name']}")
-
-                    docx_buffer = generate_docx_bytes(item["document"])
-                    st.download_button(
-                        label=f"📥 Download letter for {item['student_name']}",
-                        data=docx_buffer,
-                        file_name=f"Warning_{item['student_name'].replace(' ', '_')}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key=f"download_{item['student_name']}"
-                    )
-
-elif page == "Courses & Activity":
-    st.header("📚 Courses & Activity Log")
-
-    st.subheader("Courses")
-    courses = get_all_courses()
-    if courses:
-        selected_course = st.selectbox("Select a course to see its material:", courses)
-        docs = get_documents_for_course(selected_course)
-        if docs:
-            for d in docs:
-                st.write(f"📄 **{d['filename']}** — {d['unit']} (uploaded {d['uploaded_at'][:16]})")
-        else:
-            st.write("No material uploaded yet for this course.")
-    else:
-        st.write("No courses yet — upload material under 'Upload Content' first.")
-
-    st.subheader("Recent Activity")
-    activity = get_recent_activity()
-    if activity:
-        for a in activity:
-            st.caption(f"🕒 {a['timestamp'][:16]} — **{a['action']}**: {a['details']}")
-    else:
-        st.write("No activity recorded yet.")
+elif page == "Activity Log":
+    st.header("Activity Log")
+    st.caption("Recorded actions and timestamps only. Raw details, questions, student records and document contents are not displayed.")
+    render_activity(get_activity_view(limit=20))

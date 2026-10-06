@@ -1,6 +1,5 @@
-import ollama
+import ai_provider
 
-MODEL_NAME = "llama3.2:3b"
 
 
 # Each template defines: the fields it needs, and how to turn those
@@ -61,15 +60,14 @@ the body content, and a closing line with a designation placeholder
 (e.g. "Head of Department"). Output ONLY the document text —
 no commentary before or after."""
 
-    response = ollama.chat(
-        model=MODEL_NAME,
+    response = ai_provider.generate_chat(
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": instruction}
         ]
     )
 
-    return response["message"]["content"]
+    return response
 
 
 if __name__ == "__main__":
@@ -88,6 +86,8 @@ def generate_batch_attendance_warnings(flagged_students_df, course_name="General
 
     Returns a list of dicts: [{"student_name": ..., "document": ...}, ...]
     """
+    if 'attendance_concern' in flagged_students_df:
+        flagged_students_df = flagged_students_df.loc[flagged_students_df['attendance_concern']]
     generated_letters = []
 
     for _, row in flagged_students_df.iterrows():

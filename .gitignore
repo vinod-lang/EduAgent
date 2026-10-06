@@ -6,3 +6,59 @@ uploads/
 __pycache__/
 .DS_Store
 eduagent.db
+# Python bytecode and development caches
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment files and private keys
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local databases and SQLite sidecars
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+
+# Local model weights and checkpoints
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+/model_weights/
+/checkpoints/
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Separate rebuild environment; preserve the original venv
+.venv-rebuild/
+
+# Isolated benchmark outputs and caches (source fixtures remain tracked)
+/benchmarks/results/
+/benchmarks/cache/
+
+# Isolated local web-backend development runtime
+/.runtime/
+
+# Frontend dependencies/build/test caches
+/frontend/node_modules/
+/frontend/.next/
+/frontend/coverage/
+/frontend/*.tsbuildinfo
+/frontend/playwright-report/
+/frontend/test-results/
