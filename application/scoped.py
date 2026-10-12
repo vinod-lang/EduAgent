@@ -74,11 +74,11 @@ class ScopedKnowledge(Protected):
         return AuthorizedCollection(ids,self.collection_factory,verify=lambda selected:set(selected)<=set(self.policy.visible_ids(context,'material')))
     def retrieve(self,request,*,context=None):
         from retrieval import retrieve_evidence
-        return call(retrieve_evidence,request.question,request.filters,final_k=request.final_k,collection=self.collection(context,request.filters))
+        return call(retrieve_evidence,request.question,request.filters,final_k=request.final_k,collection=self.collection(context,request.filters),expand_adjacent=True)
     def ask(self,request,*,context=None):
         from retrieval import retrieve_evidence
         collection=self.collection(context,request.filters)
-        retriever=lambda question,filters,**kw:retrieve_evidence(question,filters,collection=collection,**kw)
+        retriever=lambda question,filters,**kw:retrieve_evidence(question,filters,collection=collection,expand_adjacent=True,**kw)
         return call(dependency(self.base.agent,'student_support_agent').answer_question,request.question,
                     n_chunks=request.final_k,filters=request.filters,retriever=retriever)
 

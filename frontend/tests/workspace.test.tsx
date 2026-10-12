@@ -58,3 +58,23 @@ it('invalid Knowledge handoff cannot generate across default scope',async()=>{na
 it('marks nested Course navigation as active',async()=>{nav.pathname='/courses/ML';render(<AuthProvider api={api().client}><ProtectedShell><p>Course detail</p></ProtectedShell></AuthProvider>);await screen.findByText('Course detail');expect(screen.getAllByRole('link',{name:'Courses'})[0]).toHaveAttribute('aria-current','page');});
 
 it('identity change clears the previous professor local workspace',async()=>{const {client,transport}=api();render(<AuthProvider api={client}><ProtectedShell><input aria-label='Private draft' defaultValue=''/></ProtectedShell></AuthProvider>);await screen.findByLabelText('Private draft');await userEvent.type(screen.getByLabelText('Private draft'),'Old professor draft');transport.mockResolvedValue(response({...professor,professor_id:'other-professor',display_name:'Other Professor'}));window.dispatchEvent(new Event('focus'));await screen.findByText('Other Professor');expect(screen.getByLabelText('Private draft')).toHaveValue('');});
+
+describe('knowledge evidence transparency',()=>{
+ it('shows authorized evidence and truthful status without invented pages',async()=>{
+  const answer={answer:'Synthetic answer for review.',grounded:true,sources:[{source:'PCA.pdf',material_id:material.material_id}],evidence:[{reference:'E1',material_id:material.material_id,source:'PCA.pdf',chunk_id:'opaque-material_chunk_0',excerpt:'Synthetic supporting passage.',rank:1,selection:'nearest',page:null}]};
+  render(<AuthProvider api={api({answer}).client}><KnowledgePage/></AuthProvider>);
+  await screen.findByRole('option',{name:'PCA.pdf'});await userEvent.type(screen.getByLabelText('What would you like to understand?'),'Explain PCA');await userEvent.click(screen.getByRole('button',{name:'Ask question'}));
+  await screen.findByText('Source evidence retrieved');
+  const summary=screen.getByText('Evidence used for this answer');
+  expect(summary.closest('details')).not.toHaveAttribute('open');
+  expect(screen.getByRole('heading',{name:'Answer for professor review'}).compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByRole('heading',{name:'Source references'}).compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getAllByText('Evidence used for this answer')).toHaveLength(1);
+  await userEvent.click(summary);
+  expect(summary.closest('details')).toHaveAttribute('open');
+  expect(screen.getByText('Synthetic supporting passage.')).toBeInTheDocument();
+  expect(screen.getByText(/Page metadata unavailable/)).toBeInTheDocument();
+  expect(screen.queryByText('Material-grounded')).not.toBeInTheDocument();
+  expect(screen.getByText(/Evidence retrieval does not verify academic correctness/)).toBeInTheDocument();
+ });
+});

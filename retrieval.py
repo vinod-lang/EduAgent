@@ -53,6 +53,7 @@ class EvidenceChunk:
     unit: str | None = None
     page: int | None = None
     content_type: str | None = None
+    selection: str = 'nearest'
 
 
 @dataclass(frozen=True)
@@ -179,7 +180,7 @@ def deduplicate(chunks):
     return selected, len(chunks) - len(selected)
 
 
-def retrieve_evidence(query, filters=None, *, candidate_k=None, final_k=None, max_distance=None, collection=None):
+def retrieve_evidence(query, filters=None, *, candidate_k=None, final_k=None, max_distance=None, collection=None, expand_adjacent=False):
     if not isinstance(query, str) or not query.strip():
         raise RetrievalError('Question must be nonblank text.')
     values = normalize_filters(filters)
@@ -206,6 +207,9 @@ def retrieve_evidence(query, filters=None, *, candidate_k=None, final_k=None, ma
         unique, duplicates = deduplicate(chunks)
         relevant = [chunk for chunk in unique if chunk.distance <= settings.max_distance]
         evidence = tuple(relevant[:settings.final_k])
+        if expand_adjacent:
+            from knowledge_evidence import expand_context
+            evidence=expand_context(evidence,collection,values)
         return RetrievalResult(evidence, RetrievalDiagnostics(settings.candidate_k, returned, invalid, duplicates,
                                len(unique) - len(relevant), len(evidence), values, metric, settings.max_distance))
     except RetrievalError:

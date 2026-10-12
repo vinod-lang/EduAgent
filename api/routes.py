@@ -92,7 +92,7 @@ def delete_material(identity:str,request:Request,p=Depends(principal),api=Depend
 @router.post('/knowledge/answer',tags=['Knowledge'],response_model=S.Answer,summary='Answer using authorized course evidence')
 def answer(body:S.Knowledge,request:Request,p=Depends(principal),api=Depends(services)):
     a=invoke(request,api.knowledge.ask,KnowledgeRequest(body.question,body.filters,body.final_k),context=p.context)
-    return dict(answer=a.answer,grounded=bool(a.retrieval.evidence),sources=P.sources(a.retrieval))
+    return dict(answer=a.answer,grounded=bool(a.retrieval.evidence),sources=P.sources(a.retrieval),evidence=P.knowledge_evidence(a.retrieval))
 @router.post('/knowledge/retrieve',tags=['Knowledge'],summary='Authorized evidence references, without chunk text/distances',response_model=S.RetrievalResponse)
 def retrieve(body:S.Knowledge,request:Request,p=Depends(principal),api=Depends(services)):
     a=invoke(request,api.knowledge.retrieve,KnowledgeRequest(body.question,body.filters,body.final_k),context=p.context)

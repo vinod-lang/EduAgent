@@ -56,7 +56,11 @@ class StatusResponse(Transport):status:str
 class MaterialResponse(Hierarchy):material_id:str;filename:str;created_at:str
 class MaterialDetailResponse(MaterialResponse):visibility:Literal['PRIVATE','COURSE','DEPARTMENT','INSTITUTE'];can_manage:bool
 class Source(Transport):source:str;material_id:str|None=None
-class Answer(Transport):answer:str;grounded:bool;sources:list[Source]
+class KnowledgeEvidence(Transport):
+    reference:str;material_id:str|None=None;source:str;chunk_id:str;excerpt:str;rank:int;selection:str;page:int|None=None
+class Answer(Transport):
+    answer:str;grounded:bool;sources:list[Source]
+    evidence:list[KnowledgeEvidence]=Field(default_factory=list)
 
 # Explicit response contracts keep internal provenance/facts out of generic responses.
 class LoginResponse(Transport):status:str;authentication:str;csrf_token:str

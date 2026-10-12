@@ -36,7 +36,7 @@ def answer_question(question, n_chunks=None, course=None, *, semester=None, subj
     retrieval = (retriever or retrieve_evidence)(question, scope, final_k=n_chunks)
     if not retrieval.evidence:
         return QAResult(NO_EVIDENCE, [], retrieval)
-    context = "\n\n".join(chunk.text for chunk in retrieval.evidence)
+    context = "\n\n".join(f"[E{index}]\n{chunk.text}" for index,chunk in enumerate(retrieval.evidence,1))
     system_prompt = """You are a helpful teaching assistant. Answer the
 student's question using ONLY the course material provided below.
 If the answer is not contained in the material, say

@@ -21,3 +21,7 @@ def execution(report):
 def provenance(value):
  if value is None:return None
  return {k:getattr(value,k) for k in ('generation_type','generated_at','validation_status','attempts_used','model','provider','grounded','professor_edited','preferences_applied')}
+
+
+def knowledge_evidence(result):
+ return [dict(reference=f'E{rank}',material_id=chunk.material_id,source=chunk.source,chunk_id=chunk.chunk_id,excerpt=chunk.text[:300],rank=rank,selection=chunk.selection,page=chunk.page) for rank,chunk in enumerate(result.evidence,1)]

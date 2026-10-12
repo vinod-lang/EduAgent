@@ -25,3 +25,24 @@ class AuthorizedCollection:
         if len(metadata)!=len(raw.get('ids',[[]])[0]):raise ValidationError()
         if self.verify is not None and not self.verify(self.allowed_ids):raise ValidationError()
         return raw
+
+
+    @property
+    def supports_adjacent(self):
+        import inspect
+        getter=getattr(self._get(),'get',None)
+        if not callable(getter):return False
+        parameters=inspect.signature(getter).parameters
+        return 'ids' in parameters or any(p.kind==p.VAR_KEYWORD for p in parameters.values())
+
+    def get(self,*,ids,where=None,include=None):
+        """Exact neighbor reads retain both authorization and academic constraints."""
+        if not self.allowed_ids:return {'ids':[],'documents':[],'metadatas':[]}
+        if self.verify is not None and not self.verify(self.allowed_ids):raise ValidationError()
+        constraint=self.constraint()
+        raw=self._get().get(ids=ids,where={'$and':[constraint,where]} if where else constraint,include=include)
+        metadata=raw.get('metadatas',[])
+        if len(metadata)!=len(raw.get('ids',[])) or any(not isinstance(m,dict) or m.get('material_id') not in self.allowed_ids for m in metadata):raise ValidationError()
+        if any(identity not in ids for identity in raw.get('ids',[])):raise ValidationError()
+        if self.verify is not None and not self.verify(self.allowed_ids):raise ValidationError()
+        return raw

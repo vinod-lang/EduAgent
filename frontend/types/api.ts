@@ -5,7 +5,8 @@ export interface Activity { actor_professor_id: string; action: string; timestam
 export interface Dashboard { material_count: number; courses: string[]; materials: Material[]; saved_drafts: DraftMetadata[]; activity: Activity[] }
 export interface AIStatus { provider: string; preferred_model: string; effective_model: string | null; fallback_active: boolean | null; embedding: string; candidate_k: number; final_k: number; threshold: number; reranker: boolean; router: boolean }
 export interface Source { source: string; material_id: string | null }
-export interface Answer { answer: string; grounded: boolean; sources: Source[] }
+export interface KnowledgeEvidence { reference: string; material_id: string|null; source: string; chunk_id: string; excerpt: string; rank: number; selection: string; page: number|null }
+export interface Answer { answer: string; grounded: boolean; sources: Source[]; evidence?: KnowledgeEvidence[] }
 export type Scope = Partial<Record<"course" | "semester" | "subject" | "unit" | "material_id", string>>;
 export interface KnowledgeRequest { question: string; filters: Scope }
 
