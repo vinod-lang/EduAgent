@@ -29,3 +29,7 @@ it('does not retry a partial deletion automatically',async()=>{
 it('normalizes malformed successful JSON without exposing upstream text',async()=>{const client=new APIClient(vi.fn().mockResolvedValue(new Response('PRIVATE INTERNAL',{status:200})));await expect(client.me()).rejects.toMatchObject({code:'INVALID_RESPONSE',status:502});});
 
 it.each([null,'private string',42])('rejects scalar malformed JSON safely: %s',async value=>{await expect(new APIClient(vi.fn().mockResolvedValue(reply(value))).me()).rejects.toMatchObject({code:'INVALID_RESPONSE'});});
+
+it.each(['MODEL_UNAVAILABLE','PROVIDER_UNAVAILABLE','PROVIDER_TIMEOUT','EMBEDDING_UNAVAILABLE','VECTOR_STORAGE_UNAVAILABLE','MARKS_MAXIMUM_REQUIRED'])('maps safe runtime code %s without exposing raw errors',async(code)=>{const error=await parseError(new Response(JSON.stringify({error:{code,message:'PRIVATE /path student secret',diagnostic:{category:'PROVIDER_ERROR'}}}),{status:code==='MARKS_MAXIMUM_REQUIRED'?422:503}));expect(error.code).toBe(code);expect(error.message).not.toMatch(/PRIVATE|secret|\/path/);expect(error.message).not.toBe('The local service is unavailable. Check the backend and try again.');});
+
+it('reachable provider generation failure does not claim Ollama is stopped',async()=>{const e=await parseError(reply({error:{code:'PROVIDER_ERROR',message:'PRIVATE'}},503));expect(e.message).toContain('could not complete generation');expect(e.message).not.toMatch(/unavailable|running|PRIVATE/);});

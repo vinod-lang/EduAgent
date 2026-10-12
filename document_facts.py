@@ -41,8 +41,9 @@ def check_expectations(expectations):
 
 def conflicts(draft, expectations):
     check_expectations(expectations)
-    body=' '.join(' '.join(draft.body).split())
-    return tuple(f for f in expectations if f.required and (not re.search(r'(?<!\w)'+re.escape(' '.join(f.value.split()))+r'(?!\w)',body) if f.field=='body' else getattr(draft,f.field)!=f.value))
+    from document_quality import body_fact_present
+    body=' '.join(draft.body)
+    return tuple(f for f in expectations if f.required and (not body_fact_present(f.value,body) if f.field=='body' else getattr(draft,f.field)!=f.value))
 
 class DocumentFactConflict(DocumentError):
     def __init__(self, count):

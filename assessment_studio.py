@@ -5,6 +5,7 @@ import json
 import re
 import unicodedata
 import ai_provider
+from generation_trace import stage
 from assessment_spec import AssessmentSpec, AssessmentError, NoAssessmentEvidence, TYPES, DIFFICULTIES, BLOOMS
 from retrieval import retrieve_evidence, deduplicate, RetrievalError
 
@@ -103,12 +104,13 @@ def validate_output(raw,spec,evidence,*,pyq_text='',professor_marks=None):
         for field in ('question_text','model_answer'):
             if not usable_text(q[field],6000):raise AssessmentError(f'Q{slot.question_number}: {field} requires usable text.')
         question_text=q['question_text'].strip(); norm=normalized(question_text)
-        if not norm or norm in seen_text:raise AssessmentError('Duplicated or empty question text.')
+        if not norm or norm in seen_text:stage('duplicate_validation',False,failure_rule='duplicate_question');raise AssessmentError('Duplicated or empty question text.')
         seen_text.add(norm)
-        if pyq_text and len(norm)>=15 and norm in normalized(pyq_text):raise AssessmentError('A generated question copies PYQ wording. Regenerate without verbatim reuse.')
+        if pyq_text and len(norm)>=15 and norm in normalized(pyq_text):stage('product_validation',False,failure_rule='pyq_copy');raise AssessmentError('A generated question copies PYQ wording. Regenerate without verbatim reuse.')
         options=q['options']; answer=q['correct_answer']
         if slot.question_type=='MCQ':
             if not isinstance(options,dict) or set(options)!={'A','B','C','D'} or any(not usable_text(v,2000) for v in options.values()) or len({normalized(v) for v in options.values()})!=4 or not isinstance(answer,str) or answer not in options:
+                stage('product_validation',False,failure_rule='mcq_structure',question_number=slot.question_number)
                 raise AssessmentError(f'Q{slot.question_number}: MCQ requires four distinct A-D options and exactly one valid answer letter.')
             options=tuple((k,options[k].strip()) for k in 'ABCD')
         else:
@@ -143,6 +145,7 @@ def generate_assessment(spec, *, pyq_text='', collection=None, retry=False):
     from structured_generation import generate_structured
     from structured_contracts import assessment_schema
     from assessment_normalization import normalize_assessment
-    result=generate_structured([dict(role='system',content=system),dict(role='user',content=json.dumps(payload,ensure_ascii=False))],assessment_schema(spec,evidence),lambda raw:validate_output(raw,spec,evidence,pyq_text=pyq_text),retry=retry,normalizer=normalize_assessment)
+    from generation_trace import assessment_checks
+    result=generate_structured([dict(role='system',content=system),dict(role='user',content=json.dumps(payload,ensure_ascii=False))],assessment_schema(spec,evidence),lambda raw:validate_output(raw,spec,evidence,pyq_text=pyq_text),retry=retry,normalizer=normalize_assessment,trace_observer=lambda data:assessment_checks(data,spec,evidence))
     from generation_diagnostics import annotate
     return annotate(result.require(AssessmentError,'assessment'),'assessment',result.attempt_count,grounded=True,normalization_applied=result.normalization_applied,normalization_type=result.normalization_type)

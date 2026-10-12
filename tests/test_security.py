@@ -276,7 +276,7 @@ def test_private_preferences_cannot_influence_other_professor(secured,services,m
     for op in (lambda:api.documents.update_preference(a,context=ctx(s.b),instruction='Changed'),lambda:api.documents.delete_preference(a,context=ctx(s.b))):
         with pytest.raises(NotFoundError):op()
     draft=document_draft()
-    request=DocumentRequest('notice','Synthetic notice',date=draft.date)
+    request=DocumentRequest('notice','Synthetic notice with a supplied INR 2500 allocation.',date=draft.date)
     provider=Mock(return_value=draft.to_json());monkeypatch.setattr(document_studio.ai_provider,'generate_chat',provider)
     generated=api.documents.generate(request,context=ctx(s.b))
     prompt=str(provider.call_args)

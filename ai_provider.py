@@ -15,6 +15,13 @@ class AIProviderError(RuntimeError):
 class AIConnectionError(AIProviderError):
     pass
 
+class AIModelUnavailableError(AIProviderError):
+    pass
+
+class AIStructuredRequestError(AIProviderError):
+    """The reachable provider rejected the structured request."""
+    pass
+
 class AIResponseError(AIProviderError):
     pass
 
@@ -28,6 +35,21 @@ def configured():
 
 def get_default_model_name() -> str:
     return configured().model
+
+
+def native_response_schema(schema):
+    """Project tuple validation to portable native grammar; local schema stays strict.
+
+    Native grammars need an object-valued array item schema. Ordered slots remain
+    enforced by the original Draft 2020-12 schema and product validator locally.
+    """
+    if isinstance(schema,list):return [native_response_schema(v) for v in schema]
+    if not isinstance(schema,Mapping):return schema
+    result={k:native_response_schema(v) for k,v in schema.items()}
+    if 'prefixItems' in result and result.get('items') is False:
+        slots=result.pop('prefixItems')
+        result['items']={'anyOf':slots}
+    return result
 
 
 def _chat(messages, model=None, *, options=None, timeout_seconds=None, think=None, response_format=None):
@@ -60,7 +82,7 @@ def _chat(messages, model=None, *, options=None, timeout_seconds=None, think=Non
         if not isinstance(response_format,Mapping) or response_format.get("type")!="object":
             raise AIProviderError("Structured response schema must describe an object.")
         import json
-        try: kwargs["format"]=json.loads(json.dumps(dict(response_format),allow_nan=False))
+        try: kwargs["format"]=native_response_schema(json.loads(json.dumps(dict(response_format),allow_nan=False)))
         except (ValueError,TypeError) as exc: raise AIProviderError("Invalid structured response schema.") from exc
     started=time.perf_counter()
     try:
@@ -69,6 +91,12 @@ def _chat(messages, model=None, *, options=None, timeout_seconds=None, think=Non
             response = client.chat(model=selection.effective_model, messages=normalized, **kwargs)
     except AIProviderError:
         raise
+    except ollama.ResponseError as exc:
+        if exc.status_code==404:
+            raise AIModelUnavailableError('The selected model is unavailable locally.') from exc
+        if response_format is not None and exc.status_code in (400,422):
+            raise AIStructuredRequestError('The AI service rejected the structured request format.') from exc
+        raise AIProviderError('The AI service could not complete generation.') from exc
     except (httpx.TransportError, ConnectionError, TimeoutError, OSError) as exc:
         raise AIConnectionError('Local AI service is unavailable or timed out. Make sure Ollama is running.') from exc
     except Exception as exc:
@@ -162,7 +190,7 @@ def resolve_model(client,settings,override=None):
     if present(settings.model):return ModelSelection(settings.model,settings.model,False)
     if settings.fallback_model and present(settings.fallback_model):
         return ModelSelection(settings.model,settings.fallback_model,settings.fallback_model!=settings.model)
-    raise AIProviderError('Neither the preferred model nor the configured fallback is installed locally. Install a reviewed model manually or adjust the local AI configuration; EduAgent will not download models.')
+    raise AIModelUnavailableError('Neither the preferred model nor the configured fallback is installed locally. Install a reviewed model manually or adjust the local AI configuration; EduAgent will not download models.')
 
 
 def get_ai_stack_status():

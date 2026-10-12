@@ -28,3 +28,10 @@
 .student-meter{display:block;width:5rem;max-width:100%;height:.5rem;margin-top:.35rem}
 
 .assistant-suggestions{display:flex;flex-wrap:wrap;gap:.5rem;margin:1rem 0}.assistant-steps{padding-left:1.5rem}.assistant-steps li{padding:1rem 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere}.assistant-steps h3{font-size:1rem}.assistant-plan,.assistant-results{outline:none}.assistant-answer{white-space:pre-wrap;overflow-wrap:anywhere;padding-block:1rem}.activity-center{list-style:none;padding:0}.activity-center li{padding:1rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:1rem}.activity-center li>div{display:flex;flex-wrap:wrap;gap:.75rem}.activity-center time{font-size:.85rem;color:var(--muted)}@media(max-width:600px){.assistant-suggestions .button{white-space:normal;text-align:left}.activity-center li{flex-direction:column}.assistant-steps{padding-left:1rem}}
+
+/* Action feedback stays visible without moving the professor's focus. */
+.action-feedback{position:fixed;right:1.25rem;bottom:1.25rem;z-index:100;max-width:min(26rem,calc(100vw - 2.5rem));pointer-events:none}
+.action-status{display:flex;align-items:center;gap:1rem;padding:1rem;border:1px solid #94a3b8;border-radius:.75rem;background:#fff;color:#172033;box-shadow:0 6px 24px #0002;pointer-events:auto}
+.action-status span{display:flex;align-items:center;gap:.5rem}.action-status.failure{border-color:#b45309}.action-status.success{border-color:#15803d}
+.action-spinner{flex-shrink:0;animation:action-spin 1s linear infinite}.button .action-spinner{margin-right:.4rem}
+@keyframes action-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.action-spinner{animation:none}}

@@ -74,6 +74,12 @@ def get_material(identity:str,request:Request,p=Depends(principal),api=Depends(s
 def upload(request:Request,file:UploadFile=File(...),course:str=Form(...),semester:str=Form(...),subject:str=Form(...),unit:str=Form(...),p=Depends(principal),api=Depends(services)):
     h=S.Hierarchy(course=course,semester=semester,subject=subject,unit=unit)
     result=invoke(request,api.materials.upload,MaterialUpload(upload_bytes(file),file.filename or '',h.model_dump()),context=p.context)
+    if not result.get('success') and not result.get('duplicate'):
+        from application.errors import StorageError
+        failure=StorageError()
+        codes={'INVALID_INPUT','STORAGE_UNAVAILABLE','VECTOR_STORAGE_UNAVAILABLE','EMBEDDING_UNAVAILABLE','OCR_UNAVAILABLE'}
+        failure.code=result.get('error_code') if result.get('error_code') in codes else 'STORAGE_UNAVAILABLE'
+        raise failure
     return {'success':result.get('success',False),'duplicate':result.get('duplicate',False),'material':P.material(result['material']) if result.get('success') else None,'message':'Material registered.' if result.get('success') else 'Material was not registered. Review the upload or duplicate selection.'}
 @router.patch('/materials/{identity}',tags=['Materials'],response_model=S.MaterialUpdateResponse,summary='Update authorized material hierarchy')
 def update_material(identity:str,body:S.Hierarchy,request:Request,p=Depends(principal),api=Depends(services)):
@@ -97,13 +103,15 @@ def pyq(request:Request,file:UploadFile=File(...),p=Depends(principal),api=Depen
     return {'handle':request.app.state.workspaces.put(p,'pyq',text)}
 @router.post('/assessments/generate',tags=['Assessments'],summary='Generate validated quiz or question paper',response_model=S.AssessmentResponse)
 def assessment(body:S.AssessmentRequest,request:Request,p=Depends(principal),api=Depends(services)):
-    from assessment_spec import AssessmentSpec,AssessmentScope
-    data=body.model_dump();handle=data.pop('pyq_handle');scope=invoke(request,AssessmentScope,data.pop('course'),data.pop('semester'),data.pop('subject'),tuple(data.pop('units')),tuple(data.pop('material_ids')))
-    spec=invoke(request,AssessmentSpec,scope=scope,**data);text=''
-    if handle:
-        with request.app.state.workspaces.item(p,handle,'pyq') as text:pass
-    a=invoke(request,api.assessments.generate,spec,context=p.context,pyq_text=text)
-    key=request.app.state.workspaces.put(p,'assessment',a);return P.assessment(a,key)
+    from generation_trace import development_trace,stage
+    with development_trace(request.app.state.settings.mode=='development','ASSESSMENT_GEN',question_count=body.total_questions,target_marks=body.total_marks):
+        from assessment_spec import AssessmentSpec,AssessmentScope
+        data=body.model_dump();handle=data.pop('pyq_handle');scope=invoke(request,AssessmentScope,data.pop('course'),data.pop('semester'),data.pop('subject'),tuple(data.pop('units')),tuple(data.pop('material_ids')))
+        spec=invoke(request,AssessmentSpec,scope=scope,**data);text=''
+        if handle:
+            with request.app.state.workspaces.item(p,handle,'pyq') as text:pass
+        a=invoke(request,api.assessments.generate,spec,context=p.context,pyq_text=text)
+        key=request.app.state.workspaces.put(p,'assessment',a);response=P.assessment(a,key);stage('session_result');return response
 @router.get('/assessments/{handle}',tags=['Assessments'],response_model=S.AssessmentResponse,summary='Review a session-owned validated assessment')
 def assessment_review(handle:str,request:Request,p=Depends(principal),api=Depends(services)):
     with request.app.state.workspaces.item(p,handle,'assessment') as a:
@@ -125,9 +133,11 @@ def documents(request:Request,p=Depends(principal),api=Depends(services)):
     return invoke(request,api.documents.list_drafts,context=p.context)
 @router.post('/documents/generate',tags=['Documents'],summary='Generate private validated document workspace',response_model=S.DocumentResponse)
 def generate_document(body:S.DocumentRequest,request:Request,p=Depends(principal),api=Depends(services)):
-    from document_models import DocumentRequest
-    a=invoke(request,api.documents.generate,invoke(request,DocumentRequest,**body.model_dump()),context=p.context)
-    handle=request.app.state.workspaces.put(p,'document',a);return P.document(a,handle)
+    from generation_trace import development_trace,stage
+    with development_trace(request.app.state.settings.mode=='development','DOC_GEN',document_type=body.document_type):
+        from document_models import DocumentRequest
+        a=invoke(request,api.documents.generate,invoke(request,DocumentRequest,**body.model_dump()),context=p.context)
+        handle=request.app.state.workspaces.put(p,'document',a);response=P.document(a,handle);stage('session_result');return response
 @router.get('/documents/catalog',tags=['Documents'],summary='Authoritative document choices; no storage initialization')
 def document_catalog(p=Depends(principal)):
     from document_models import CATALOG,TONES,FIELDS
@@ -226,7 +236,8 @@ def student_preview(handle:str,body:S.StudentPreview,request:Request,p=Depends(p
         rows=StudentAnalysis(table.frame.head(10),{}).to_dict()['students']
         rows=[{k:str(v)[:200] if v is not None else None for k,v in row.items()} for row in rows]
         return {'columns':list(table.frame.columns),'rows':rows,'total_rows':len(table.frame),
-                'suggestions':{k:{'candidates':list(v.candidates),'confidence':v.confidence} for k,v in suggestions.items()}}
+                'suggestions':{k:{'candidates':list(v.candidates),'confidence':v.confidence} for k,v in suggestions.items()},
+                'mapping_hints':__import__('student_ingestion').mapping_hints(table,suggestions)}
 @router.post('/students/{handle}/normalize',tags=['Students'],response_model=S.StudentNormalized,summary='Normalize local student data with explicit mapping')
 def student_normalize(handle:str,body:S.StudentMapping,request:Request,p=Depends(principal),api=Depends(services)):
     from student_ingestion import Mapping,Assessment

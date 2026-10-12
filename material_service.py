@@ -107,19 +107,20 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
     try:
         duplicate = db.find_material_hash(digest)
     except Exception as exc:
-        return result(error=f'Material registry is unavailable: {exc}')
+        return result(error=f'Material registry is unavailable: {exc}', error_code='STORAGE_UNAVAILABLE')
     if duplicate:
         return result(duplicate=True, existing_material=duplicate, error=f"Exact content already registered as {duplicate['original_filename']}.")
     identity = str(uuid.uuid4())
     record = dict(material_id=identity, original_filename=name, managed_filename=identity+Path(name).suffix.lower(), file_hash=digest, **hierarchy, created_at=datetime.now().isoformat())
     root = Path(uploads)
     path = managed_path(record, root)
-    ids = []; created = False; attempted_vectors = False
+    ids = []; created = False; attempted_vectors = False; stage = 'STORAGE_UNAVAILABLE'
     try:
         root.mkdir(parents=True, exist_ok=True)
         with path.open('xb') as stream:
             created = True
             stream.write(data)
+        stage = 'INVALID_INPUT'
         text = extractor(path) if extractor is not None else extract_content(path)
         chunks = chunk_text(text)
         if not chunks:
@@ -127,6 +128,7 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
         ids = [f'{identity}_chunk_{i}' for i in range(len(chunks))]
         record['chunk_ids'] = json.dumps(ids)
         metadata = dict(material_id=identity, source=name, **hierarchy, **authorization)
+        stage = 'VECTOR_STORAGE_UNAVAILABLE'
         vectors = vectors_api(vectors)
         if vectors.get_material_chunks(ids)['ids']:
             raise MaterialError('Generated chunk IDs already exist; upload refused.')
@@ -135,6 +137,7 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
         stored = checked_chunks(vectors, record, ids)
         if set(stored['ids']) != set(ids):
             raise MaterialError('Vector insertion did not persist every owned chunk.')
+        stage = 'STORAGE_UNAVAILABLE'
         db.register_material(record) if ownership is None else db.register_material(record,ownership=ownership)
         return result(True, material=record, vectors_created=len(ids),
                       text_preview=text[:1000] if Path(name).suffix.lower() != '.pdf' else '')
@@ -152,7 +155,11 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
                 path.unlink(missing_ok=True)
             except OSError as cleanup:
                 warnings.append(f'File rollback failed: {cleanup}; material ID: {identity}')
-        out = result(error=f'Upload failed: {exc}', material_id=identity, chunk_ids=ids)
+        from storage_errors import EmbeddingUnavailableError
+        if isinstance(exc,EmbeddingUnavailableError):stage='EMBEDDING_UNAVAILABLE'
+        from content_agent import ContentExtractionError
+        if isinstance(exc,ContentExtractionError) and str(exc).startswith('Image OCR is unavailable'):stage='OCR_UNAVAILABLE'
+        out = result(error=f'Upload failed: {exc}', error_code=stage, material_id=identity, chunk_ids=ids)
         # A concurrent upload can win the UNIQUE hash race; keep this controlled.
         try:
             duplicate = db.find_material_hash(digest)

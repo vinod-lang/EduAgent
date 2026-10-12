@@ -108,10 +108,10 @@ def label_key(value):
 
 
 ALIASES = {
-    'student_id': {'rollno','rollnumber','enrollmentno','enrollmentnumber','enrolmentno','studentid','registrationno','registrationnumber'},
+    'student_id': {'rollno','rollnumber','studentrollno','studentrollnumber','enrollmentno','enrollmentnumber','enrolmentno','studentid','registrationno','registrationnumber'},
     'student_name': {'name','studentname','nameofstudent'},
     'attendance': {'attendance','attendancepercent','attendancepercentage','attendancepct'},
-    'assessment_number': {'assessmentnumber','assessmentno'},
+    'assessment_number': {'assessmentnumber','assessmentno','examnumber','examno','testnumber','testno','attemptnumber','attemptno'},
 }
 MARK_WORDS = ('quiz','midsem','midterm','endsem','assignment','total','marks','score','final','test','exam')
 
@@ -283,6 +283,30 @@ def suggest_columns(table):
     return suggestions
 
 
+def mapping_hints(table, suggestions=None):
+    """Header-only scale hints; never derive a maximum from observed scores."""
+    suggestions=suggest_columns(table) if suggestions is None else suggestions
+    originals=dict(zip(table.frame.columns,table.original_headers))
+    def percentage(label):return bool(re.search(r'%|\bpercent(?:age)?\b',str(label),re.I))
+    attendance=suggestions['attendance'].selected
+    marks={}
+    reserved={c for role,s in suggestions.items() if role!='assessments' for c in s.candidates}
+    # Manual marks choices can include unknown numeric columns, but never a
+    # semantic identity/name/attendance/history column. Invalid labelled marks
+    # remain offered so validation can explain their data-quality problems.
+    choices=[]
+    for column in table.frame:
+        if column in reserved:continue
+        values=table.frame[column].dropna()
+        numeric=any(not missing(v) and re.fullmatch(r'[+-]?\d+(?:\.\d+)?\s*%?',str(v).strip()) for v in values)
+        if column in suggestions['assessments'].candidates or numeric:choices.append(column)
+        label=originals[column]
+        marks[column]={'scale':'percentage' if percentage(label) else 'raw',
+                       'maximum':None if percentage(label) else suggested_maximum(label)}
+    return {'attendance_scale':'percentage' if attendance and percentage(originals[attendance]) else 'auto',
+            'assessments':marks,'assessment_columns':choices}
+
+
 def suggested_maximum(label):
     match = re.search(r'\((\d+(?:\.\d+)?)\)|\bout\s+of\s+(\d+(?:\.\d+)?)', str(label), re.I)
     return float(next(v for v in match.groups() if v is not None)) if match else None
@@ -366,6 +390,12 @@ def _validate_mapping(table, mapping):
         raise StudentDataError('Choose a valid attendance scale.')
     if not mapping.assessments or not mapping.attendance:
         raise StudentDataError('Map attendance and at least one assessment column.')
+    suggestions=suggest_columns(table)
+    reserved={c for role,s in suggestions.items() if role!='assessments' for c in s.candidates}
+    if any(a.column in reserved for a in mapping.assessments):
+        raise StudentDataError('Identity, name, attendance and assessment-number columns cannot be marks.')
+    if mapping.assessment_number in suggestions['assessments'].candidates:
+        raise StudentDataError('A marks column cannot be the assessment-number column.')
     names = []
     for a in mapping.assessments:
         if not isinstance(a.name, str) or not a.name.strip() or len(a.name) > 100:

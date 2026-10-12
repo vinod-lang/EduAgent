@@ -1088,3 +1088,179 @@ Start `.venv-rebuild/bin/python tests/browser/build27_runtime.py`; it creates an
 Do not call this build production-ready. Next phase should resolve pilot blockers and validate real professor journeys before expanding capabilities or replacing local storage infrastructure.
 
 Background refresh also keys the protected workspace by professor identity: changing identity clears previous professor local state, while successful same-identity verification preserves it. The release audit does not certify every permutation of interruption, every route at every viewport, or complete WCAG conformance. Browser smoke checks representative keyboard activation and automated structural accessibility (contrast excluded); manual tab-order/screen-reader/contrast testing remains a pilot prerequisite.
+
+### Manual web-test runtime preflight
+
+FastAPI and Next.js starting does not prove AI readiness. Use the same private
+shell configuration as the API process. Keep the development key and identity
+mapping out of Git; never print them. Required existing flags are
+`EDUAGENT_API_MODE=development`, `EDUAGENT_DEV_AUTH=true`, configured
+`EDUAGENT_DEV_IDENTITIES`, and `EDUAGENT_DEV_ACCESS_KEY`. The frontend additionally
+requires **both** `EDUAGENT_FRONTEND_MODE=development` and
+`EDUAGENT_FRONTEND_DEV_AUTH=true`, plus its configured aliases and the same private
+key. Merely setting the frontend authentication flag is insufficient.
+
+Before starting, check without inference or production storage writes:
+
+```sh
+cd /Users/vinod/Desktop/EduAgent
+.venv-rebuild/bin/python --version
+.venv-rebuild/bin/python -m pip check
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv-rebuild/bin/python - <<'PY'
+from pathlib import Path
+import sqlite3
+from api.settings import APISettings
+from ai_provider import get_ai_stack_status, AIProviderError
+s = APISettings.from_environment()
+p = Path(s.database_path).resolve()
+assert p != Path('eduagent.db').resolve(), 'Use separate development SQLite'
+assert Path(s.uploads_path).resolve() != Path('uploads').resolve()
+assert Path(s.chroma_path).resolve() != Path('chroma_db').resolve()
+assert s.development_auth, 'Configure the existing development authentication'
+assert p.is_file(), 'Provision development storage explicitly once; do not overwrite it'
+with sqlite3.connect(p.as_uri() + '?mode=ro', uri=True) as connection:
+    connection.execute('PRAGMA query_only=ON')
+    tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert 'course_materials' in tables, 'Development schema is not provisioned'
+print('Development database opens read-only; production paths excluded')
+try:
+    a = get_ai_stack_status()
+    print('AI ready:', a.effective_model, 'fallback:', a.fallback_active)
+except AIProviderError:
+    print('AI not ready: check the local service and installed preferred/fallback models')
+PY
+ollama list
+```
+
+If Ollama is stopped, the user must start the already installed application/service
+manually before retesting. EduAgent does not start it, install it, or pull models.
+`qwen2.5:3b` is preferred; installed `llama3.2:3b` is the availability fallback.
+A failure after selection does not switch models. Missing models, service failures,
+timeouts and validation failures are distinct states; valid metadata browsing does
+not prove generation readiness.
+
+Then, in separately configured shells:
+
+```sh
+.venv-rebuild/bin/uvicorn api.app:create_api_app --factory --host 127.0.0.1 --port 8000 --no-access-log
+# Separate terminal, with the existing private frontend configuration loaded:
+cd /Users/vinod/Desktop/EduAgent/frontend
+npm run dev
+# A third terminal:
+curl --fail http://127.0.0.1:8000/api/v1/health
+curl --fail http://127.0.0.1:8000/api/v1/readiness
+curl --fail --output /dev/null http://127.0.0.1:3000/login
+```
+
+Open `http://127.0.0.1:3000`; the backend is `http://127.0.0.1:8000`.
+Do not re-bootstrap existing development data just to retry a failed upload.
+Material failures now distinguish extraction, OCR, embedding, vector and registry
+stages. Exact-ID vector/file rollback remains unchanged. Cleanup failure still
+requires administrator review; cross-storage atomicity cannot be guaranteed during
+an external storage outage.
+
+Student mapping remains deterministic. `roll_no`, `attendance`, and `marks` are
+already recognized aliases. The web UI now defaults suggested marks to raw mode
+with an empty maximum, requiring explicit confirmation of the actual scale. A
+professor can supply the true maximum or deliberately select percentage mode;
+values below 100 alone do not prove percentage semantics. Invalid-row counts and
+stable issue codes remain visible; no student cells go to AI or logs.
+
+The synthetic manual browser fixture is `tests/browser/manual_runtime.py` with
+`tests/browser/manual_smoke.mjs`. It uses actual PDF extraction and a real 50-row
+XLSX; vectors/provider are mocked. The separate isolated real-Chroma reproduction
+succeeded using cached embeddings with model loading offline. This does not prove
+that a particular uploaded PDF or a differently configured API process is healthy.
+Original manual failures cannot be conclusively attributed without their precise
+runtime/configuration and input bytes. No private material was copied into tests.
+
+### Manual runtime fix pass 2
+
+Student preview now supplies header-only scale hints and exclusive semantic roles.
+Both roll_no/attendance/marks and Student Name/Student Roll No./Attendance (%)/
+Marks (out of 100) are covered by isolated XLSX/API tests. Plain marks still require
+an explicit maximum; observed scores never determine the maximum. Student processing
+remains deterministic and does not call AI.
+
+One tiny real structured assessment diagnostic reached Ollama and returned HTTP 400
+in about 3.5 seconds before parsing or product validation. The exact rejection body
+was not retained: a particular schema keyword is not conclusively established as
+the cause. Native tuple schemas are projected to object-valued array item grammars,
+while original strict local schemas and product validators remain authoritative.
+Live acceptance of this projection requires the next manual retest; no repeated
+inference was performed. Connection, missing-model, timeout, native-format rejection,
+invalid output and general generation failures now retain distinct safe diagnostics.
+
+Narrow class-cancellation notice phrases use the existing CREATE_DOCUMENT notice
+action and typed plan validation. Approval, authorization, five-action allowlist
+and server-owned plan handles remain required. No external actions were added.
+
+### Manual document/Qwen integration repair
+
+The centralized preferred model remains qwen2.5:3b with llama3.2:3b fallback.
+Installing the preferred model is a local Ollama operation, not a repository artifact.
+No production RAG/embedding/default changes are part of this repair.
+
+Document drafting explicitly separates protected factual values from generated
+professional prose. Existing 17 catalog types receive structural-family guidance.
+Bounded checks reject empty/placeholder paragraphs, common dangling factual
+sentences, and unsupported recognizable dates, financial amounts, attendance/event
+counts, explicit venue claims and granted-approval claims. These are deterministic
+guards, not semantic truth verification: names, implicit claims and arbitrary prose
+still require professor review. Synthetic mocked requests must supply their own
+financial facts rather than expecting fabricated budgets to pass.
+
+Refinement no longer protects every digit in JSON as a factual constraint.
+Structured confirmed fields remain exact, explicitly required body facts remain
+required, financial grouping/currency notation/connective changes are accepted,
+and recognizable body factual values cannot silently mutate. General free-text
+confirmed phrases remain conservative: arbitrary synonym equivalence is not
+guessed. Rejected candidates never replace the current valid version.
+
+The Next Document Studio prioritizes the editor and Save/Refine/Export actions;
+Document fields, Manage facts, Version history, Details and Feedback are secondary
+collapsible controls. Unchanged facts need no repeated confirmation; removals and
+fact conflicts remain explicit. Assessment numeric inputs keep a local editing
+buffer, avoiding leading zeroes without changing numeric domain validation.
+
+Institutional template seam: DocumentTemplate owns ordered field blocks and generic
+formatting independently of DocumentDraft content and fact expectations. Future
+reviewed authentic profiles can extend this renderer/registry boundary; this repair
+adds no official institution branding, boilerplate or fictional templates.
+
+Browser repair smoke uses manual_runtime.py with isolated SQLite/uploads and mocked
+inference. It covers financial draft, edits/save, longer refinement, rejected
+contradiction, compact facts/history/details, DOCX/PDF and numeric 0-to-5 editing.
+
+
+## Manual runtime repair pass 3
+
+Preserves the existing unstaged repair tree. No model/default/storage changes.
+The installed Next API rewrite proxy otherwise times out at 30 seconds, before
+our 120-second provider and 180-second browser limits. The proxy now matches the
+existing 180-second browser ceiling; provider configuration is unchanged.
+A synthetic 15-MCQ request (30 marks, difficulty 8/2/5, Bloom 6/3/4/1/0/1)
+passes strict normalization/schema/product validation. A delayed mocked browser
+request passed through the actual proxy after 33.75 seconds. No live inference.
+This establishes the timeout mismatch; the historical real failure's exact
+provider output/duration was not retained and cannot be reconstructed.
+
+Official Letter layout guidance now explicitly honors blank optional metadata.
+The exact Dean financial-approval instruction passes isolated mocked generation,
+save, refinement and exports without an amount/date/venue/reference. Missing
+optional fields do not become confirmed facts. Quality rejection has its own
+DOCUMENT_QUALITY_FAILED category; invented dates/amounts/locations/approvals
+remain fact-preservation failures. No product validators are weakened.
+Historical rejected output was not retained; real-model manual retest remains
+necessary to confirm that request's original failure mechanism.
+
+ActionFeedbackProvider/useFeedbackClient and ActionButton supply local pending
+text/spinners/aria-busy plus one fixed polite live region. Notifications contain
+static action labels only: never API arguments, response text or student data.
+Success expires after 5 seconds; failure after 12, with keyboard dismissal.
+Navigation clears notifications and late old completions cannot replace newer
+statuses. Duplicate pending mutations are coalesced, aborted calls released,
+and activity reads are not coalesced across different page/filter requests.
+Existing contextual results/errors and explicit approval controls remain.
+Browser fixture uses temporary SQLite and mock vectors/provider; optional
+synthetic delay variables apply only to that explicitly launched test fixture.

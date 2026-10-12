@@ -1,3 +1,4 @@
+import { API_TIMEOUT_MS } from "@/lib/timeouts";
 import type { Professor, Dashboard, Material, AIStatus, Answer, KnowledgeRequest, Hierarchy, UploadResult, DeleteResult, MaterialDetail, Assessment, AssessmentRequest, QuestionEdit, DocumentCatalog, DraftMetadata, StudioDocument, DocumentRequest, DocumentEdit, DocumentFact, DocumentChange, DocumentPreference, PreferenceRequest } from "@/types/api";
 const messages: Record<number, string> = {
   401: "Your session has ended. Sign in again to continue.", 403: "This request is not permitted. Refresh your session and try again.",
@@ -6,8 +7,25 @@ const messages: Record<number, string> = {
   422: "Check your question, selection or required fields and try again.", 503: "The local service is unavailable. Check the backend and try again.",
   500: "EduAgent could not complete this request. Try again later.",
 };
+const codeMessages:Record<string,string>={
+ PROVIDER_ERROR:"The local AI service could not complete generation. Review the request or try a smaller request.",
+ STUDENT_ID_NOT_MAPPED:"Student identifier or name is not mapped. Select an identity column.",
+ STUDENT_COLUMNS_NOT_MAPPED:"Map attendance and at least one marks column.",
+ MARKS_MAXIMUM_REQUIRED:"Maximum marks is required for raw marks. Enter a positive maximum.",
+ MARKS_SCALE_REQUIRED:"Choose raw marks with a maximum, or explicitly confirm percentage marks.",
+ NO_STUDENT_ROWS:"The selected sheet and header contain no student rows.",
+ MODEL_UNAVAILABLE:"The configured local AI models are unavailable. Ask the administrator to check installed models.",
+ PROVIDER_UNAVAILABLE:"The local AI service is unavailable. Check that Ollama is running. Nothing invalid was saved or executed.",
+ PROVIDER_TIMEOUT:"The local AI service took too long to respond. Try a smaller request or retry later.",
+ STORAGE_UNAVAILABLE:"Local material storage is unavailable. Registration did not complete; check storage before retrying.",
+ VECTOR_STORAGE_UNAVAILABLE:"Material indexing failed because local vector storage is unavailable. Registration did not complete.",
+ EMBEDDING_UNAVAILABLE:"The local embedding model is unavailable. Ask the administrator to check local embedding resources.",
+ OCR_UNAVAILABLE:"Local OCR is unavailable. Ask the administrator to check Tesseract.",
+ INVALID_INPUT:"The file has no usable readable content or is invalid. Review the file before retrying.",
+ INVALID_MAPPING:"Review student identity, attendance and marks mappings. Raw marks require a positive maximum."
+};
 export class APIError extends Error {
-  constructor(public status: number, public code: string = "REQUEST_FAILED", public requestId?: string, public category?: string) { super(messages[status] ?? "Cannot connect to EduAgent. Check the backend connection and try again."); this.name = "APIError"; }
+  constructor(public status: number, public code: string = "REQUEST_FAILED", public requestId?: string, public category?: string) { super(codeMessages[code] ?? messages[status] ?? "Cannot connect to EduAgent. Check the backend connection and try again."); this.name = "APIError"; }
 }
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 export async function parseError(response: Response): Promise<APIError> {
@@ -27,8 +45,8 @@ export class APIClient {
   clear() { this.csrf = null; this.csrfPending = null; }
   private async raw<T>(path: string, options: RequestInit = {}): Promise<T> {
     let response: Response;
-    try { response = await this.transport(`/api/v1${path}`, { ...options, signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(180000)]) : AbortSignal.timeout(180000), credentials: "include", cache: "no-store" }); }
-    catch (error) { if (record(error) && error.name === "AbortError") throw error; throw new APIError(0, "NETWORK_ERROR"); }
+    try { response = await this.transport(`/api/v1${path}`, { ...options, signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(API_TIMEOUT_MS)]) : AbortSignal.timeout(API_TIMEOUT_MS), credentials: "include", cache: "no-store" }); }
+    catch (error) { if (record(error) && error.name === "AbortError") throw error; if (record(error) && error.name === "TimeoutError") throw new APIError(504, "PROVIDER_TIMEOUT"); throw new APIError(0, "NETWORK_ERROR"); }
     if (!response.ok) { const error = await parseError(response); if (response.status === 401) { this.clear(); this.unauthorized?.(); } throw error; }
     try { const value: unknown = await response.json(); if (!record(value) && !Array.isArray(value)) throw new Error(); return value as T; } catch { throw new APIError(502, "INVALID_RESPONSE"); }
   }
@@ -65,7 +83,7 @@ export class APIClient {
   discardAssessment(handle:string){return this.mutate<{status:string}>(`/assessments/${encodeURIComponent(handle)}`,"DELETE");}
   uploadPYQ(file:File){const form=new FormData();form.append("file",file);return this.mutate<{handle:string}>("/assessments/pyq","POST",form);}
   async exportAssessment(handle:string,format:'pdf'|'docx',answerKey:boolean){
-    let response:Response;try{response=await this.transport(`/api/v1/assessments/${encodeURIComponent(handle)}/export?format=${format}&answer_key=${answerKey}`,{credentials:"include",cache:"no-store",signal:AbortSignal.timeout(180000)});}catch{throw new APIError(0,"NETWORK_ERROR");}
+    let response:Response;try{response=await this.transport(`/api/v1/assessments/${encodeURIComponent(handle)}/export?format=${format}&answer_key=${answerKey}`,{credentials:"include",cache:"no-store",signal:AbortSignal.timeout(API_TIMEOUT_MS)});}catch{throw new APIError(0,"NETWORK_ERROR");}
     if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
   }
   documentCatalog(signal?:AbortSignal){return this.request<DocumentCatalog>("/documents/catalog",undefined,signal);}
@@ -88,7 +106,7 @@ export class APIClient {
   updatePreference(id:string,body:{instruction?:string;active?:boolean}){return this.mutate<{status:string}>(`/preferences/${encodeURIComponent(id)}`,"PATCH",body);}
   deletePreference(id:string){return this.mutate<{status:string}>(`/preferences/${encodeURIComponent(id)}`,"DELETE");}
   async exportDocument(handle:string,format:'pdf'|'docx'){
-    let response:Response;try{response=await this.transport(`/api/v1/document-workspaces/${encodeURIComponent(handle)}/export?format=${format}`,{credentials:"include",cache:"no-store",signal:AbortSignal.timeout(180000)});}catch{throw new APIError(0,"NETWORK_ERROR");}
+    let response:Response;try{response=await this.transport(`/api/v1/document-workspaces/${encodeURIComponent(handle)}/export?format=${format}`,{credentials:"include",cache:"no-store",signal:AbortSignal.timeout(API_TIMEOUT_MS)});}catch{throw new APIError(0,"NETWORK_ERROR");}
     if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
   }
   uploadStudents(file:File){const form=new FormData();form.append("file",file);return this.mutate<{handle:string;sheets:string[]}>("/students/upload","POST",form);}
@@ -98,7 +116,7 @@ export class APIClient {
   studentDetail(handle:string,index:number,filters:import("@/types/students").Filters){return this.request<import("@/types/students").Detail>(`/students/${encodeURIComponent(handle)}/detail`,{index,marks_threshold:filters.marks_threshold,attendance_threshold:filters.attendance_threshold});}
   clearStudents(handle:string){return this.mutate<{status:string}>(`/students/${encodeURIComponent(handle)}`,"DELETE");}
   async exportStudents(handle:string,filters:import("@/types/students").Filters){
-    await this.ensureCSRF();const run=()=>this.transport(`/api/v1/students/${encodeURIComponent(handle)}/export`,{method:"POST",credentials:"include",cache:"no-store",signal:AbortSignal.timeout(180000),headers:{"Content-Type":"application/json","X-CSRF-Token":this.csrf??""},body:JSON.stringify(filters)});
+    await this.ensureCSRF();const run=()=>this.transport(`/api/v1/students/${encodeURIComponent(handle)}/export`,{method:"POST",credentials:"include",cache:"no-store",signal:AbortSignal.timeout(API_TIMEOUT_MS),headers:{"Content-Type":"application/json","X-CSRF-Token":this.csrf??""},body:JSON.stringify(filters)});
     let response:Response;try{response=await run();if(response.status===403){const error=await parseError(response.clone());if(error.code==="CSRF_REJECTED"){this.csrf=null;await this.ensureCSRF();response=await run();}}}catch{throw new APIError(0,"NETWORK_ERROR");}
     if(!response.ok){const error=await parseError(response);if(response.status===401){this.clear();this.unauthorized?.();}throw error;}return response.blob();
   }

@@ -4,12 +4,13 @@ from datetime import datetime, timezone
 from structured_generation import Failure
 
 _MESSAGES = {
+    Failure.DOCUMENT_QUALITY_FAILED: ('Draft needs revision', 'The generated draft contained incomplete prose or unfilled placeholders. Your previous document was not changed.', 'Try drafting again with a clear purpose.'),
     Failure.INVALID_JSON: ('Unusable response', 'EduAgent could not produce a usable structured response.', 'Try generating again.'),
     Failure.SCHEMA_INVALID: ('Format validation failed', 'The generated response did not match the required format.', 'Try generating again.'),
     Failure.PRODUCT_VALIDATION_FAILED: ('Requirements not satisfied', 'The generated content did not satisfy all requested requirements.', 'Review the request and try again.'),
     Failure.FACT_PRESERVATION_FAILED: ('Required facts not preserved', 'One or more required facts were missing or changed in the generated document.', 'Keep the previous version and review confirmed facts.'),
     Failure.INSUFFICIENT_EVIDENCE: ('More material needed', 'Not enough matching academic material was found to answer or generate this reliably.', 'Adjust the scope or provide matching material.'),
-    Failure.PROVIDER_ERROR: ('AI service unavailable', 'The local AI service could not complete the request.', 'Check that Ollama and the configured model are available.'),
+    Failure.PROVIDER_ERROR: ('AI generation failed', 'The local AI service could not complete generation.', 'Review the request or try a smaller request.'),
     Failure.TIMEOUT: ('AI service timed out', 'The local AI service took too long to respond.', 'Try again later or use a smaller request.'),
     Failure.UNSUPPORTED_OPERATION: ('Unsupported request', 'This operation is not available in EduAgent.', 'Use a supported workflow; external and destructive actions are unavailable.'),
 }
@@ -73,9 +74,11 @@ def from_error(error):
     from document_facts import DocumentFactConflict
     if isinstance(error,UnsupportedPlanError):return failed(Failure.UNSUPPORTED_OPERATION)
     if isinstance(error,DocumentFactConflict):return failed(Failure.FACT_PRESERVATION_FAILED)
-    from ai_provider import AIProviderError
+    from ai_provider import AIProviderError,AIStructuredRequestError,AIResponseError
     import httpx
     if isinstance(error,NoAssessmentEvidence):return failed(Failure.INSUFFICIENT_EVIDENCE)
+    if isinstance(error,AIStructuredRequestError):return failed(Failure.SCHEMA_INVALID)
+    if isinstance(error,AIResponseError):return failed(Failure.INVALID_JSON)
     if isinstance(error,AIProviderError):
         category=Failure.TIMEOUT if isinstance(error.__cause__,(TimeoutError,httpx.TimeoutException)) else Failure.PROVIDER_ERROR
         return failed(category)

@@ -35,6 +35,11 @@ def plan_request(request,context=None, *, retry=False):
                 if column in dataset.frame:
                     for value in dataset.frame[column].dropna().astype(str):
                         if value.strip() and re.search(r'(?<!\w)'+re.escape(value.strip().casefold())+r'(?!\w)',text):raise UnsupportedPlanError('Student-identifying requests cannot be sent to AI; use Student Data Hub local filters.')
+        notice=re.fullmatch(r"(?:(?:make|draft|prepare)(?: a)?(?: small| short)?(?: student)? notice (?:for|about) class cancellation|(?:draft|prepare)(?: a)? notice that today['’]s class is cancelled)",text)
+        if notice:
+            raw=json.dumps({'unsupported':False,'actions':[dict(action_id='notice',action_type='CREATE_DOCUMENT',parameters={'document_type':'notice','description':request.strip()},depends_on=[])]})
+            plan=parse_plan(raw,request);validate_plan(plan,context)
+            return plan
         if re.search(r'\b(marks|attendance)\b',text) or (re.search(r'\b(student|students)\b',text) and not re.search(r'\b(quiz|assessment|exam|announcement|notice)\b',text)):
             raise UnsupportedPlanError('This student operation is unsupported. Use local Student Data Hub filters; personalized AI messages are not enabled.')
         if re.search(r'\b(personalized|each weak student|send each|student advice)\b',text):raise UnsupportedPlanError('Personalized student AI content is unsupported.')

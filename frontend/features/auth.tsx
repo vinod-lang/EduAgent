@@ -3,11 +3,14 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { usePathname, useRouter } from "next/navigation";
 import { APIClient, APIError } from "@/lib/api";
 import type { Professor } from "@/types/api";
+import {ActionFeedbackProvider,useFeedbackClient} from "@/components/action-feedback";
 type Session = { status: "loading" | "unauthenticated" | "error"; message?: string } | { status: "authenticated"; professor: Professor };
 type Auth = { session: Session; client: APIClient; ready: boolean; refresh: () => Promise<void>; login: (alias: string) => Promise<void>; logout: () => Promise<void> };
 const Context = createContext<Auth | null>(null);
-export function AuthProvider({ children, api }: { children: React.ReactNode; api?: APIClient }) {
-  const [client] = useState(() => api ?? new APIClient());
+export function AuthProvider(props: { children: React.ReactNode; api?: APIClient }) {return <ActionFeedbackProvider><AuthSession {...props}/></ActionFeedbackProvider>;}
+function AuthSession({ children, api }: { children: React.ReactNode; api?: APIClient }) {
+  const [transportClient] = useState(() => api ?? new APIClient());
+  const client = useFeedbackClient(transportClient);
   const [session, setSession] = useState<Session>({ status: "loading" });
   const [verifiedPath, setVerifiedPath] = useState<string | null>(null);
   const pathname = usePathname(); const router = useRouter(); const pending = useRef<AbortController | null>(null);

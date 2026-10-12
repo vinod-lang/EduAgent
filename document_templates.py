@@ -32,3 +32,44 @@ TEMPLATES={STANDARD.template_id:STANDARD}
 def get_template(template_id='standard_academic'):
     try:return TEMPLATES[template_id]
     except (KeyError,TypeError) as exc:raise DocumentError('Unsupported document template.') from exc
+
+
+@dataclass(frozen=True)
+class DocumentStructureProfile:
+    """Generic prose slots within the existing template, not institutional facts."""
+    family: str
+    prose_fields: tuple
+    required: tuple = ('body',)
+    optional_metadata: tuple = ('recipient','sender','date','reference_number','signature')
+    omit_unavailable: bool = True
+
+    def schema(self, source):
+        # Legacy complete JSON remains accepted, but AI need only return prose.
+        properties = {'document_type': {'const': source.document_type},
+                      **{key: {'type':'string'} for key in FIELDS},
+                      'body': {'type':'array','items':{'type':'string'},'minItems':1,'maxItems':100}}
+        for key in self.optional_metadata:
+            properties[key] = {'const': getattr(source,key)}
+        for key in ('title','subject'):
+            if getattr(source,key): properties[key] = {'const':getattr(source,key)}
+        for key in ('salutation','closing'):
+            if key not in self.prose_fields: properties[key] = {'const':''}
+        return {'type':'object','properties':properties,'required':['body'],'additionalProperties':False}
+
+    def assemble(self, data, source):
+        # Schema has already checked optional legacy echoes; never trust AI metadata.
+        content = {key:data.get(key,'') if key in self.prose_fields else '' for key in FIELDS}
+        for key in self.optional_metadata: content[key] = getattr(source,key)
+        for key in ('title','subject'):
+            if getattr(source,key): content[key] = getattr(source,key)
+        return DocumentDraft(document_type=source.document_type,body=data['body'],**content)
+
+PROFILES = {
+    family: DocumentStructureProfile(family, ('title','subject','salutation','body','closing')
+                                    if family in ('letter','email') else ('title','subject','body'))
+    for family in ('letter','email','announcement','memo','report')
+}
+
+def structure_profile(document_type,template_id='standard_academic'):
+    get_template(template_id)  # Existing template registry remains authoritative.
+    return PROFILES[CATALOG[document_type][1]]

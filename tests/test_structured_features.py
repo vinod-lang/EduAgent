@@ -90,7 +90,7 @@ def test_assessment_missing_evidence_no_call(chat,monkeypatch):
 
 @pytest.fixture
 def document_request():
-    return DocumentRequest('notice','Synthetic event',recipient='Synthetic audience',date='10 October 2026',reference_number='SYN-1',title='Synthetic notice',subject='Synthetic tutorial')
+    return DocumentRequest('notice','Synthetic event costs INR 2500 for 20 attendees.',recipient='Synthetic audience',date='10 October 2026',reference_number='SYN-1',title='Synthetic notice',subject='Synthetic tutorial')
 
 def draft(request):
     return DocumentDraft(request.document_type,recipient=request.recipient,date=request.date,reference_number=request.reference_number,title=request.title,subject=request.subject,body=('Synthetic event costs INR 2500 for 20 attendees.',))
@@ -150,9 +150,10 @@ def test_preference_cannot_override_fact(chat,document_request,monkeypatch):
     assert 'templates override' in chat.call_args.kwargs['messages'][0]['content']
 
 
-def test_explicit_metadata_missing_no_retry(chat,document_request):
+def test_explicit_metadata_omission_assembled_no_retry(chat,document_request):
     data=draft(document_request).to_dict();del data['date'];chat.return_value=json.dumps(data)
-    with pytest.raises(DocumentError,match='FACT_PRESERVATION_FAILED'):documents.generate_draft(document_request,retry=True)
+    result=documents.generate_draft(document_request,retry=True)
+    assert result.date==document_request.date
     assert chat.call_count==1
 
 

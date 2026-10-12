@@ -30,6 +30,7 @@ def document_docx_bytes(draft,template_id='standard_academic'):
     section.top_margin=section.bottom_margin=section.left_margin=section.right_margin=Inches(template.margin_inches)
     section.page_width=Inches(8.27);section.page_height=Inches(11.69)
     normal=document.styles['Normal'];normal.font.name='Arial';normal.font.size=Pt(11)
+    normal.paragraph_format.widow_control=True
     normal.paragraph_format.space_after=Pt(9);normal.paragraph_format.line_spacing=1.15
     title_style=document.styles['Title']
     title_style.font.name='Arial';title_style.font.size=Pt(18);title_style.font.color.rgb=RGBColor(0,0,0)

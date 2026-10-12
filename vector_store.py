@@ -12,6 +12,9 @@ _clients = {}
 _collections = {}
 _embedding_function = None
 
+from storage_errors import EmbeddingUnavailableError
+
+
 
 def get_storage_path(path=None):
     value = os.environ.get('EDUAGENT_CHROMA_PATH', './chroma_db') if path is None else path
@@ -24,9 +27,12 @@ def get_embedding_function():
     global _embedding_function
     with _storage_lock:
         if _embedding_function is None:
-            from chromadb.utils import embedding_functions
-            _embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name=get_embedding_model_name())
+            try:
+                from chromadb.utils import embedding_functions
+                _embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name=get_embedding_model_name())
+            except Exception as exc:
+                raise EmbeddingUnavailableError('The local embedding model could not be initialized.') from exc
         return _embedding_function
 
 

@@ -33,7 +33,7 @@ def test_tones_unicode_optional(tone):
 
 
 def test_generate_structured_payload(monkeypatch):
-    request=DocumentRequest('permission_request','Request a workshop on 15 November 2026',recipient='Head of Department',title='Workshop permission',subject='Workshop request')
+    request=DocumentRequest('permission_request','Request a workshop on 15 November 2026 for 80 students with a budget of ₹25,000.',recipient='Head of Department',title='Workshop permission',subject='Workshop request')
     spy=Mock(return_value=draft().to_json());monkeypatch.setattr(studio.ai_provider,'generate_chat',spy)
     assert studio.generate_draft(request)==draft()
     payload=json.loads(spy.call_args.kwargs['messages'][1]['content'])

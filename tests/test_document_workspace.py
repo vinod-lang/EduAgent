@@ -6,7 +6,7 @@ import ai_provider,db
 from test_api import web,client
 from test_security import secured,services,own
 
-REQUEST=dict(document_type='notice',description='Announce a synthetic tutorial.',title='Synthetic tutorial notice',date='14 October 2026',reference_number='SYN/2026/01',recipient='Synthetic students',sender='Synthetic department',subject='Tutorial',signature='Synthetic professor')
+REQUEST=dict(document_type='notice',description='Announce a synthetic tutorial with a supplied budget of ₹2500.',title='Synthetic tutorial notice',date='14 October 2026',reference_number='SYN/2026/01',recipient='Synthetic students',sender='Synthetic department',subject='Tutorial',signature='Synthetic professor')
 def response(request=REQUEST):
     return dict(document_type=request['document_type'],title=request.get('title',''),date=request.get('date',''),reference_number=request.get('reference_number',''),recipient=request.get('recipient',''),sender=request.get('sender',''),subject=request.get('subject',''),signature=request.get('signature',''),salutation='',closing='',body=['Synthetic tutorial for students. Budget ₹2500.'])
 @pytest.fixture
