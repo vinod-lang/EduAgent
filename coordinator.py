@@ -1,6 +1,5 @@
-import ollama
+import ai_provider
 
-MODEL_NAME = "llama3.2:3b"
 
 
 def classify_intent(user_input):
@@ -24,15 +23,14 @@ categories:
 Respond with ONLY the single category phrase in lowercase. No
 punctuation, no explanation, nothing else."""
 
-    response = ollama.chat(
-        model=MODEL_NAME,
+    response = ai_provider.generate_chat(
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_input}
         ]
     )
 
-    intent = response["message"]["content"].strip().lower()
+    intent = response.strip().lower()
 
     valid_intents = ["question", "quiz", "document", "quiz_and_notice"]
     if intent not in valid_intents:

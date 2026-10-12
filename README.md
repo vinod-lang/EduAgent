@@ -83,7 +83,56 @@ educational tool handling academic content and student records.
 2. Create a virtual environment: `python3 -m venv venv && source venv/bin/activate`
 3. Install dependencies: `pip install -r requirements.txt`
 4. Install [Ollama](https://ollama.com) and pull a model: `ollama pull llama3.2:3b`
+Actiavate virtual environment : source .venv-rebuild/bin/activate
 5. Run the app: `streamlit run app.py`
+
+
+Terminal 1 :
+ollama list
+ollama serve
+
+Terminal 2:
+cd ~/Desktop/EduAgent
+source .venv-rebuild/bin/activate
+
+export EDUAGENT_API_MODE=development
+export EDUAGENT_DEV_AUTH=true
+export EDUAGENT_DEV_IDENTITIES='{"professor-a":"a176c532-edce-447e-95ea-555c09bc9117","professor-b":"eac839ba-9366-4ba7-8aec-8dad06a0f808"}'
+export EDUAGENT_DEV_ACCESS_KEY='bdde348890958366adc748285ef10546a2c3845fc3d31db66befc3b2a1833daf'
+export EDUAGENT_API_ORIGINS='http://127.0.0.1:3000'
+export EDUAGENT_API_DB="$PWD/.runtime/api-development.sqlite3"
+export EDUAGENT_API_UPLOADS="$PWD/.runtime/uploads"
+export EDUAGENT_API_CHROMA="$PWD/.runtime/chroma"
+
+.venv-rebuild/bin/uvicorn api.app:create_api_app --factory --host 127.0.0.1 --port 8000
+
+Terminal 3:
+cd ~/Desktop/EduAgent/frontend
+
+export EDUAGENT_API_BACKEND_URL='http://127.0.0.1:8000'
+export EDUAGENT_FRONTEND_MODE=development
+export EDUAGENT_FRONTEND_DEV_AUTH=true
+export EDUAGENT_DEV_ALIASES='professor-a,professor-b'
+export EDUAGENT_DEV_ACCESS_KEY='bdde348890958366adc748285ef10546a2c3845fc3d31db66befc3b2a1833daf'
+
+npm run dev
+
+http://127.0.0.1:3000
+
+
+To check DEV ACCESS KEY :
+cd ~/Desktop/EduAgent
+
+if [ -n "$EDUAGENT_DEV_ACCESS_KEY" ]; then
+  echo "Key is already set"
+else
+  echo "Key is NOT set"
+fi
+
+To generate DEV ACCESS KEY :
+openssl rand -hex 32
+
+
 
 ## Future Scope
 

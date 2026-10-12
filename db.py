@@ -1,13 +1,27 @@
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 
 DB_PATH = "eduagent.db"
+from contextvars import ContextVar
+_storage_path = ContextVar('eduagent_sqlite_path',default=None)
+
+@contextmanager
+def storage_context(path):
+    token=_storage_path.set(str(path))
+    try:yield
+    finally:_storage_path.reset(token)
+
+def open_connection(path):
+    conn=sqlite3.connect(str(path),timeout=5)
+    conn.row_factory=sqlite3.Row
+    conn.execute('PRAGMA foreign_keys=ON')
+    conn.execute('PRAGMA busy_timeout=5000')
+    return conn
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # lets us access columns by name
-    return conn
+    return open_connection(_storage_path.get() or DB_PATH)
 
 
 def init_db():
@@ -49,6 +63,7 @@ def init_db():
 
     conn.commit()
     conn.close()
+    init_material_schema()
 
 
 def add_course_if_new(course_name):
@@ -121,3 +136,87 @@ def get_recent_activity(limit=20):
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+@contextmanager
+def material_connection():
+    conn = get_connection()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
+# Managed materials coexist with the untouched legacy documents registry.
+def init_material_schema():
+    with material_connection() as conn:
+        conn.execute('''CREATE TABLE IF NOT EXISTS materials (
+            material_id TEXT PRIMARY KEY,
+            original_filename TEXT NOT NULL,
+            managed_filename TEXT UNIQUE NOT NULL,
+            file_hash TEXT UNIQUE NOT NULL,
+            course TEXT NOT NULL, semester TEXT NOT NULL,
+            subject TEXT NOT NULL, unit TEXT NOT NULL,
+            chunk_ids TEXT NOT NULL, created_at TEXT NOT NULL
+        )''')
+
+
+def get_material(material_id):
+    with material_connection() as conn:
+        row = conn.execute('SELECT * FROM materials WHERE material_id = ?', (material_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def find_material_hash(file_hash):
+    with material_connection() as conn:
+        row = conn.execute('SELECT * FROM materials WHERE file_hash = ?', (file_hash,)).fetchone()
+        return dict(row) if row else None
+
+
+def list_materials(course=None, *, authorized_ids=None):
+    with material_connection() as conn:
+        clauses=[];params=[]
+        if course:clauses.append('course = ?');params.append(course)
+        if authorized_ids is not None:
+            if not authorized_ids:return []
+            clauses.append('material_id IN ('+','.join('?' for _ in authorized_ids)+')');params.extend(authorized_ids)
+        rows = conn.execute('SELECT * FROM materials'+(' WHERE '+' AND '.join(clauses) if clauses else '')+' ORDER BY created_at DESC',params).fetchall()
+        return [dict(row) for row in rows]
+
+
+def register_material(record, *, ownership=None):
+    keys = ('material_id', 'original_filename', 'managed_filename', 'file_hash', 'course', 'semester', 'subject', 'unit', 'chunk_ids', 'created_at')
+    with material_connection() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        conn.execute('INSERT INTO materials (' + ','.join(keys) + ') VALUES (' + ','.join('?' for _ in keys) + ')', tuple(record[k] for k in keys))
+        conn.execute('INSERT OR IGNORE INTO courses (course_name, created_at) VALUES (?, ?)', (record['course'], record['created_at']))
+        conn.execute('INSERT INTO activity_log (action, details, timestamp) VALUES (?, ?, ?)', ('material_uploaded', record['material_id'], record['created_at']))
+        if ownership is not None:
+            from security.repository import SecurityRepository
+            SecurityRepository.attach_ownership(conn,'material',record['material_id'],ownership)
+
+
+def update_material_hierarchy(material_id, hierarchy):
+    with material_connection() as conn:
+        conn.execute('UPDATE materials SET course=?, semester=?, subject=?, unit=? WHERE material_id=?', (*[hierarchy[k] for k in ('course','semester','subject','unit')], material_id))
+        conn.execute('INSERT OR IGNORE INTO courses (course_name, created_at) VALUES (?, ?)', (hierarchy['course'], datetime.now().isoformat()))
+        conn.execute('INSERT INTO activity_log (action, details, timestamp) VALUES (?, ?, ?)', ('material_hierarchy_updated', material_id, datetime.now().isoformat()))
+
+
+def remove_material_record(material_id):
+    with material_connection() as conn:
+        conn.execute('DELETE FROM materials WHERE material_id=?', (material_id,))
+        conn.execute('INSERT INTO activity_log (action, details, timestamp) VALUES (?, ?, ?)', ('material_deleted', material_id, datetime.now().isoformat()))
+
+
+def legacy_materials(course):
+    return [dict(row, semester='Unassigned', subject='Unassigned', unit=row.get('unit') or 'Unassigned', managed=False) for row in get_documents_for_course(course)]
+
+
+def assessment_legacy_scope_records():
+    """Read only recorded legacy hierarchy; do not invent semester/subject values."""
+    with material_connection() as conn:
+        columns={row['name'] for row in conn.execute('PRAGMA table_info(documents)')}
+        if not {'course','semester','subject','unit'}<=columns:
+            return []
+        return [dict(row) for row in conn.execute('SELECT * FROM documents')]

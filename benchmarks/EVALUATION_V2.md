@@ -1,0 +1,17 @@
+# Build 14 Evaluation V2
+
+Production contracts are unchanged. Provider response_format is opt-in and only benchmark callers use it. Existing generate_chat retains its prior defaults. No model router, repair retry, default/model/embedding change or production reindex occurs.
+
+The generative suite has 30 planner, 20 assessment, 20 document and 16 Q&A cases, using 12 authored academic topics. Prompt-only and schema-constrained modes use identical prompts, temperature 0, seed 17, context 4096, output cap 2048, timeout 90 seconds. One run per scenario/mode is used consistently to bound laptop cost; this does not measure stochastic repeat variance. Strict existing product validators remain authoritative. Ollama grammar can enforce structure, not factual correctness or parameter extraction. No correction attempts are performed.
+
+Failure distributions are multi-label diagnostic categories. Truncation requires explicit token-cap evidence; malformed JSON alone does not prove truncation. Document facts are scored in body text separately from metadata/schema. Exact date/reference/entity and numeric-token checks are conservative proxies, not semantic equivalence judgments. Unsupported numeric counts cannot detect all invented named events or policies. Preference metrics cover paragraph limits, not every subjective style rule. Subjective quality remains PENDING HUMAN REVIEW.
+
+Synthetic retrieval uses 60 chunks, 48 questions and a separate authored retrieval fixture. There are 24 calibration and 24 held-out queries; thresholds are selected only on calibration, never on held-out scores. Several held-out cases are templated paraphrases of calibration concepts: they do not test unseen domains. Three no-evidence queries per split provide weak safety confidence, which must be explicit. CPU, two threads, offline cached embeddings; no model download. First baseline settings are 15/5/0.65; candidate-specific calibration is benchmark only.
+
+Prospective production gates: planner schema >=95%, exact action/parameter/dependency/clarification success >=90%, refusal/privacy 100%; assessment contract >=95%; document schema and required body facts >=95%, with human review of invented facts. At least 20 distinct cases/task and professor review are required. Retrieval switching requires >=5 percentage-point held-out Hit@1 gain, no material Recall@5 loss, <=5% no-evidence false positives, and broader negative-query coverage. Reranking needs measured ranking gain sufficient to justify memory/latency; a single-model upgrade must meet baseline across critical categories. No gate automatically approves a production migration.
+
+Raw outputs/review sheets are ignored under benchmarks/results/build14-*. Build 13 source fixtures and results are retained. Human fields remain blank. The next-build recommendation must be F while substantive human review is pending.
+
+## Resource-safe continuation
+
+The owner stopped sustained inference for excessive heat/memory/swap pressure. Finish from saved artifacts with zero additional model calls; no downloads/reranker or repeated embedding/model matrices. Envelope-schema results, the new stricter contract schema and supplementary fixtures are distinct experiments: the latter two have no live results. The frozen progress file is preserved; offline recovery retains original metrics/responses and adds current deterministic scores. Use final corrected retrieval artifacts only. See [final report](BUILD14_REPORT.md). Human review CSV remains ignored with blank subjective scores.

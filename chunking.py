@@ -6,6 +6,11 @@ def chunk_text(text, chunk_size=500, overlap=50):
     overlap = how many characters repeat between chunks, so we don't
               accidentally cut a sentence in half and lose meaning
     """
+    if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
+        raise ValueError("chunk_size must be a positive integer")
+    if not isinstance(overlap, int) or isinstance(overlap, bool) or overlap < 0 or overlap >= chunk_size:
+        raise ValueError("overlap must satisfy 0 <= overlap < chunk_size")
+
     chunks = []
     start = 0
 

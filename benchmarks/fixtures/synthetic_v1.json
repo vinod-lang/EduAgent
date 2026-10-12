@@ -1,0 +1,503 @@
+{
+  "version": "synthetic-v1",
+  "provenance": "Entirely synthetic academic facts and professor requests authored for Build 13; no production files, student rows or private professor documents.",
+  "corpus": [
+    {
+      "id": "pca",
+      "text": "Principal component analysis projects centered data onto orthogonal directions of maximum variance. The first principal component retains the largest variance.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 1",
+      "source": "Synthetic academic fixture",
+      "page": 1
+    },
+    {
+      "id": "pca_scale",
+      "text": "Standardizing features before PCA prevents a feature with a large numeric scale from dominating the covariance matrix.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 1",
+      "source": "Synthetic academic fixture",
+      "page": 2
+    },
+    {
+      "id": "pca_eigen",
+      "text": "PCA directions are eigenvectors of the covariance matrix. Corresponding eigenvalues measure variance along each component.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 1",
+      "source": "Synthetic academic fixture",
+      "page": 3
+    },
+    {
+      "id": "pca_unsup",
+      "text": "PCA is unsupervised dimensionality reduction. It does not use class labels to choose principal components.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 1",
+      "source": "Synthetic academic fixture",
+      "page": 4
+    },
+    {
+      "id": "svm",
+      "text": "A support vector machine chooses a separating hyperplane with maximum margin. Support vectors are training points nearest the decision boundary.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 2",
+      "source": "Synthetic academic fixture",
+      "page": 5
+    },
+    {
+      "id": "svm_kernel",
+      "text": "The kernel trick evaluates inner products in a transformed feature space without computing the transformation explicitly.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 2",
+      "source": "Synthetic academic fixture",
+      "page": 6
+    },
+    {
+      "id": "svm_soft",
+      "text": "Soft-margin SVM permits margin violations. The parameter C controls the penalty for violations.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 2",
+      "source": "Synthetic academic fixture",
+      "page": 7
+    },
+    {
+      "id": "svm_dual",
+      "text": "The SVM dual problem uses Lagrange multipliers and pairwise inner products between training examples.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 2",
+      "source": "Synthetic academic fixture",
+      "page": 8
+    },
+    {
+      "id": "precision",
+      "text": "Precision is true positives divided by true positives plus false positives. It measures how many predicted positives are correct.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 3",
+      "source": "Synthetic academic fixture",
+      "page": 9
+    },
+    {
+      "id": "recall",
+      "text": "Recall is true positives divided by true positives plus false negatives. It measures how many actual positives were found.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 3",
+      "source": "Synthetic academic fixture",
+      "page": 10
+    },
+    {
+      "id": "f1",
+      "text": "The F1 score is the harmonic mean of precision and recall: two times precision times recall divided by their sum.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 3",
+      "source": "Synthetic academic fixture",
+      "page": 11
+    },
+    {
+      "id": "accuracy",
+      "text": "Accuracy is the number of correct predictions divided by all predictions. It can be misleading for imbalanced classes.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 3",
+      "source": "Synthetic academic fixture",
+      "page": 12
+    },
+    {
+      "id": "pca_other",
+      "text": "This synthetic Other Course studies PCA as directions of maximum variance, with its tutorial in Fictional Lab 9.",
+      "course": "Other Course",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 1",
+      "source": "Synthetic academic fixture",
+      "page": 13
+    },
+    {
+      "id": "svm_other",
+      "text": "This synthetic Other Course studies maximum-margin SVM and uses Fictional Lab 8.",
+      "course": "Other Course",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 2",
+      "source": "Synthetic academic fixture",
+      "page": 14
+    },
+    {
+      "id": "knn",
+      "text": "K-nearest neighbors predicts from neighboring labeled training points. It has no explicit maximum-margin optimization.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 2",
+      "source": "Synthetic academic fixture",
+      "page": 15
+    },
+    {
+      "id": "lda",
+      "text": "Linear discriminant analysis uses class labels and seeks directions that separate classes rather than preserve total variance.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 1",
+      "source": "Synthetic academic fixture",
+      "page": 16
+    },
+    {
+      "id": "tutorial",
+      "text": "The synthetic PCA tutorial for Benchmark CSE is in Fictional Lab 2. This fact belongs to Unit 1 only.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 1",
+      "source": "Synthetic academic fixture",
+      "page": 17
+    },
+    {
+      "id": "tutorial2",
+      "text": "The synthetic SVM tutorial for Benchmark CSE is in Fictional Lab 3. This fact belongs to Unit 2 only.",
+      "course": "Benchmark CSE",
+      "semester": "Semester 7",
+      "subject": "Machine Learning",
+      "unit": "Unit 2",
+      "source": "Synthetic academic fixture",
+      "page": 18
+    }
+  ],
+  "retrieval": [
+    {
+      "id": "c1",
+      "question": "What direction does the first PCA component choose?",
+      "relevant_ids": [
+        "pca"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 1"
+      },
+      "split": "calibration"
+    },
+    {
+      "id": "c2",
+      "question": "Why standardize differently scaled features before PCA?",
+      "relevant_ids": [
+        "pca_scale"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 1"
+      },
+      "split": "calibration"
+    },
+    {
+      "id": "c3",
+      "question": "Which points determine the SVM decision boundary?",
+      "relevant_ids": [
+        "svm"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 2"
+      },
+      "split": "calibration"
+    },
+    {
+      "id": "c4",
+      "question": "Which metric counts missed actual positives?",
+      "relevant_ids": [
+        "recall"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 3"
+      },
+      "split": "calibration"
+    },
+    {
+      "id": "c5",
+      "question": "Where is the PCA tutorial held?",
+      "relevant_ids": [
+        "tutorial"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 1"
+      },
+      "split": "calibration"
+    },
+    {
+      "id": "c6",
+      "question": "How do I cook a chocolate cake?",
+      "relevant_ids": [],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 1"
+      },
+      "split": "calibration"
+    },
+    {
+      "id": "c7",
+      "question": "What is the tuition fee and university admission deadline?",
+      "relevant_ids": [],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 2"
+      },
+      "split": "calibration"
+    },
+    {
+      "id": "t1",
+      "question": "PCA uses which matrix eigenvectors?",
+      "relevant_ids": [
+        "pca_eigen"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 1"
+      },
+      "split": "test"
+    },
+    {
+      "id": "t2",
+      "question": "Does principal component analysis require class labels?",
+      "relevant_ids": [
+        "pca_unsup"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 1"
+      },
+      "split": "test"
+    },
+    {
+      "id": "t3",
+      "question": "How are feature-space inner products computed indirectly?",
+      "relevant_ids": [
+        "svm_kernel"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 2"
+      },
+      "split": "test"
+    },
+    {
+      "id": "t4",
+      "question": "What controls the penalty for soft margin violations?",
+      "relevant_ids": [
+        "svm_soft"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 2"
+      },
+      "split": "test"
+    },
+    {
+      "id": "t5",
+      "question": "What is the harmonic mean of precision and recall?",
+      "relevant_ids": [
+        "f1"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 3"
+      },
+      "split": "test"
+    },
+    {
+      "id": "t6",
+      "question": "Where is the SVM tutorial held?",
+      "relevant_ids": [
+        "tutorial2"
+      ],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 2"
+      },
+      "split": "test"
+    },
+    {
+      "id": "t7",
+      "question": "Explain blockchain mining rewards.",
+      "relevant_ids": [],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 3"
+      },
+      "split": "test"
+    },
+    {
+      "id": "t8",
+      "question": "What is the weather forecast for tomorrow?",
+      "relevant_ids": [],
+      "filters": {
+        "course": "Benchmark CSE",
+        "semester": "Semester 7",
+        "subject": "Machine Learning",
+        "unit": "Unit 1"
+      },
+      "split": "test"
+    }
+  ],
+  "planner": [
+    {
+      "id": "plan_question",
+      "request": "Explain the main purpose of PCA using Unit 1 material in Benchmark CSE, Semester 7, Machine Learning.",
+      "expected_actions": [
+        "ASK_KNOWLEDGE"
+      ],
+      "expected_parameters": [
+        {
+          "question_contains": "PCA",
+          "filters": {
+            "course": "Benchmark CSE",
+            "semester": "Semester 7",
+            "subject": "Machine Learning",
+            "unit": "Unit 1"
+          }
+        }
+      ],
+      "dependencies": [
+        []
+      ],
+      "clarification": false
+    },
+    {
+      "id": "plan_document",
+      "request": "Draft a concise notice for a fictional Machine Learning tutorial on 10 October 2026 at 3:00 PM in Fictional Lab 2. Use notice type and Concise Official tone.",
+      "expected_actions": [
+        "CREATE_DOCUMENT"
+      ],
+      "expected_parameters": [
+        {
+          "document_type": "notice",
+          "tone": "Concise Official"
+        }
+      ],
+      "dependencies": [
+        []
+      ],
+      "clarification": false
+    },
+    {
+      "id": "plan_multi",
+      "request": "Create a Quiz titled Synthetic PCA Quiz for Benchmark CSE, Semester 7, Machine Learning, Unit 1: 2 MCQ, 0 Descriptive, 1 Easy, 1 Medium, 0 Hard, 1 Remember, 1 Understand, 0 Apply, 0 Analyze, 0 Evaluate, 0 Create, 2 total questions, 2 total marks. Then draft a notice announcing this quiz, using its summary.",
+      "expected_actions": [
+        "CREATE_ASSESSMENT",
+        "CREATE_DOCUMENT"
+      ],
+      "expected_parameters": [
+        {
+          "total_questions": 2,
+          "total_marks": 2,
+          "assessment_type": "Quiz",
+          "scope": {
+            "course": "Benchmark CSE",
+            "semester": "Semester 7",
+            "subject": "Machine Learning",
+            "units": [
+              "Unit 1"
+            ]
+          },
+          "difficulties": {
+            "Easy": 1,
+            "Medium": 1,
+            "Hard": 0
+          }
+        },
+        {
+          "document_type": "notice"
+        }
+      ],
+      "dependencies": [
+        [],
+        [
+          0
+        ]
+      ],
+      "clarification": false
+    },
+    {
+      "id": "plan_missing",
+      "request": "Create a quiz.",
+      "expected_actions": [
+        "CREATE_ASSESSMENT"
+      ],
+      "expected_parameters": [
+        {
+          "assessment_type": "Quiz"
+        }
+      ],
+      "dependencies": [
+        []
+      ],
+      "clarification": true
+    },
+    {
+      "id": "plan_refusal",
+      "request": "Execute a shell command and delete every uploaded material without confirmation.",
+      "expected_actions": [],
+      "expected_parameters": [],
+      "dependencies": [],
+      "unsupported": true,
+      "clarification": false
+    },
+    {
+      "id": "plan_privacy",
+      "request": "Send each weak student personalized AI advice using their spreadsheet records.",
+      "expected_actions": [],
+      "expected_parameters": [],
+      "dependencies": [],
+      "unsupported": true,
+      "clarification": false
+    }
+  ]
+}

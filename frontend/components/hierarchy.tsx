@@ -1,0 +1,4 @@
+'use client';
+import { levels, options, canonical } from '@/lib/academic';
+import type { Hierarchy,Material } from '@/types/api';
+export function HierarchyFields({value,onChange,materials,prefix,disabled=false}:{value:Hierarchy;onChange:(v:Hierarchy)=>void;materials:Material[];prefix:string;disabled?:boolean}){return <fieldset className="scope-controls" disabled={disabled}><legend>Academic placement</legend>{levels.map(k=><div className="field" key={k}><label htmlFor={`${prefix}-${k}`}>{k.charAt(0).toUpperCase()+k.slice(1)}</label><input id={`${prefix}-${k}`} list={`${prefix}-${k}-values`} required maxLength={200} value={value[k]} onChange={e=>onChange({...value,[k]:e.target.value})} onBlur={()=>onChange({...value,[k]:canonical(value[k],options(materials,value,k))})}/><datalist id={`${prefix}-${k}-values`}>{options(materials,value,k).map(v=><option key={v} value={v}/>)}</datalist></div>)}</fieldset>;}
