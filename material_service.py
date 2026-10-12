@@ -83,7 +83,16 @@ def result(success=False, **fields):
     return dict(success=success, warnings=[], **fields)
 
 
-def upload_material(data, original_filename, hierarchy, *, uploads='uploads', vectors=None, extractor=None, ownership_metadata=None):
+def upload_material(data, original_filename, hierarchy, **kwargs):
+    from indexing_diagnostics import diagnostic_scope,observe
+    with diagnostic_scope():
+        outcome=_upload_material(data,original_filename,hierarchy,**kwargs)
+        observe(success=bool(outcome.get('success')),rollback_failed=bool(outcome.get('warnings')))
+        return outcome
+
+
+def _upload_material(data, original_filename, hierarchy, *, uploads='uploads', vectors=None, extractor=None, ownership_metadata=None):
+    from indexing_diagnostics import observe
     name = validate_filename(original_filename)
     hierarchy = hierarchy_values(hierarchy)
     if not isinstance(data, bytes) or not data:
@@ -121,8 +130,11 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
             created = True
             stream.write(data)
         stage = 'INVALID_INPUT'
+        observe(indexing_stage='extraction')
         text = extractor(path) if extractor is not None else extract_content(path)
+        observe(indexing_stage='extraction',extracted_characters=len(text))
         chunks = chunk_text(text)
+        observe(indexing_stage='chunking',chunk_count=len(chunks))
         if not chunks:
             raise MaterialError('Material contains no usable extracted text.')
         ids = [f'{identity}_chunk_{i}' for i in range(len(chunks))]
@@ -130,30 +142,40 @@ def upload_material(data, original_filename, hierarchy, *, uploads='uploads', ve
         metadata = dict(material_id=identity, source=name, **hierarchy, **authorization)
         stage = 'VECTOR_STORAGE_UNAVAILABLE'
         vectors = vectors_api(vectors)
+        observe(indexing_stage='collision_check')
         if vectors.get_material_chunks(ids)['ids']:
             raise MaterialError('Generated chunk IDs already exist; upload refused.')
         attempted_vectors = True
+        observe(indexing_stage='vector_insertion')
         vectors.add_material_chunks(ids, chunks, metadata)
+        observe(indexing_stage='verification')
         stored = checked_chunks(vectors, record, ids)
         if set(stored['ids']) != set(ids):
             raise MaterialError('Vector insertion did not persist every owned chunk.')
         stage = 'STORAGE_UNAVAILABLE'
+        observe(indexing_stage='registration')
         db.register_material(record) if ownership is None else db.register_material(record,ownership=ownership)
         return result(True, material=record, vectors_created=len(ids),
                       text_preview=text[:1000] if Path(name).suffix.lower() != '.pdf' else '')
     except Exception as exc:
+        observe(exception_type=type(exc).__name__,failed=True)
         warnings = []
         if attempted_vectors:
+            observe(rollback_attempted=True)
             try:
                 vectors.delete_material_chunks(ids)
                 if vectors.get_material_chunks(ids)['ids']:
                     raise MaterialError('Vector rollback could not be verified.')
+                observe(vector_rollback='pass')
             except Exception as cleanup:
+                observe(vector_rollback='fail',rollback_exception_type=type(cleanup).__name__)
                 warnings.append(f'Vector rollback failed: {cleanup}; retry IDs: {ids}')
         if created:
             try:
                 path.unlink(missing_ok=True)
+                observe(file_rollback='pass')
             except OSError as cleanup:
+                observe(file_rollback='fail',rollback_exception_type=type(cleanup).__name__)
                 warnings.append(f'File rollback failed: {cleanup}; material ID: {identity}')
         from storage_errors import EmbeddingUnavailableError
         if isinstance(exc,EmbeddingUnavailableError):stage='EMBEDDING_UNAVAILABLE'

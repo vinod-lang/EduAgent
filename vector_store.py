@@ -28,11 +28,17 @@ def get_embedding_function():
     with _storage_lock:
         if _embedding_function is None:
             try:
+                from indexing_diagnostics import observe
+                observe(indexing_stage='embedding_initialization',embedding_initialization='started')
                 from chromadb.utils import embedding_functions
                 _embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
                     model_name=get_embedding_model_name())
+                observe(embedding_initialization='pass')
             except Exception as exc:
+                observe(embedding_initialization='fail',failure_category='embedding_failure')
                 raise EmbeddingUnavailableError('The local embedding model could not be initialized.') from exc
+        from indexing_diagnostics import observe
+        observe(embedding_initialization='pass')
         return _embedding_function
 
 
@@ -41,11 +47,19 @@ def get_chroma_client(path=None):
     with _storage_lock:
         if resolved not in _clients:
             import chromadb
-            _clients[resolved] = chromadb.PersistentClient(path=resolved)
+            from indexing_diagnostics import observe,path_category
+            observe(indexing_stage='storage_initialization',storage_path_category=path_category(resolved))
+            try:
+                _clients[resolved] = chromadb.PersistentClient(path=resolved)
+            except Exception:
+                observe(failure_category='storage_initialization_failure')
+                raise
         return _clients[resolved]
 
 
 def get_collection(path=None, *, client=None, embedding_function=None):
+    from indexing_diagnostics import observe,path_category
+    observe(storage_path_category=path_category(get_storage_path(path)))
     # Injected clients/functions bypass default caches; no production access.
     if client is not None:
         function = get_embedding_function() if embedding_function is None else embedding_function
@@ -134,7 +148,8 @@ def get_all_chunks(source_name=None, course=None, limit=15, *, collection=None, 
 
 # Exact-ID APIs for managed material lifecycle; no source-based deletion.
 def add_material_chunks(ids, chunks, metadata, *, collection=None, path=None):
-    _resolve_collection(collection, path).add(ids=ids, documents=chunks, metadatas=[dict(metadata) for _ in chunks])
+    from vector_indexing import insert_chunks
+    insert_chunks(_resolve_collection(collection, path),ids,chunks,metadata)
 
 
 def get_material_chunks(ids, *, collection=None, path=None):

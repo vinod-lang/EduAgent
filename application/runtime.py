@@ -20,7 +20,9 @@ class ConfiguredVectors:
     def collection(self):
         from vector_store import get_collection
         return get_collection(self.path)
-    def add_material_chunks(self,ids,chunks,metadata):self.collection().add(ids=ids,documents=chunks,metadatas=[dict(metadata) for _ in chunks])
+    def add_material_chunks(self,ids,chunks,metadata):
+        from vector_indexing import insert_chunks
+        insert_chunks(self.collection(),ids,chunks,metadata)
     def get_material_chunks(self,ids):return self.collection().get(ids=ids)
     def delete_material_chunks(self,ids):
         if ids:self.collection().delete(ids=ids)

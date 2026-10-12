@@ -125,3 +125,12 @@ class AIStackStatus:
     distance_threshold: float
     reranker_enabled: bool
     router_enabled: bool
+
+
+def get_index_batch_size():
+    """Bounded documents per embedding/insertion call, independent of RAG."""
+    value=os.environ.get('EDUAGENT_INDEX_BATCH_SIZE','500')
+    try: size=int(value)
+    except (ValueError,TypeError): raise ConfigurationError('Index batch size must be a positive integer.') from None
+    if size < 1 or size > 5000: raise ConfigurationError('Index batch size must be between 1 and 5000.')
+    return size
